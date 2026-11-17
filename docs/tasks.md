@@ -21,7 +21,7 @@
 
 | 任务 | 内容 | 里程碑 | 前置 | 当前状态 | GitHub |
 |---|---|---|---|---|---|
-| T00 | 需求、方案、GitHub 与留痕基线 | M0 | 无 | 建项中，待推送验证 | [#1](https://github.com/cancan7777777/black-and-white/issues/1) |
+| T00 | 需求、方案、GitHub 与留痕基线 | M0 | 无 | 已完成（仅规划建项） | [#1](https://github.com/cancan7777777/black-and-white/issues/1) |
 | T01 | 规则：终局、计分、188、连败、计时 | M0 | T00 | 待确认 | [#2](https://github.com/cancan7777777/black-and-white/issues/2) |
 | T02 | 硬件、供电、引脚和软件环境 | M0 | T00 | 未开始 | [#3](https://github.com/cancan7777777/black-and-white/issues/3) |
 | T03 | 键位、状态、数据和串口协议 | M0 | T01、T02 | 未开始 | [#4](https://github.com/cancan7777777/black-and-white/issues/4) |
