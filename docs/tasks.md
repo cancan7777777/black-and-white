@@ -39,6 +39,7 @@
 | T15 | 可选：AI 版本/许可/规则兼容 | M5 | T14 | 可选未开始 | [#16](https://github.com/cancan7777777/black-and-white/issues/16) |
 | T16 | 可选：桥接、推荐、人机对弈 | M5 | T15 | 可选未开始 | [#17](https://github.com/cancan7777777/black-and-white/issues/17) |
 | T17 | 可选研究：分析、复盘与胜率校准 | M5 | T16 | 可选未开始 | [#18](https://github.com/cancan7777777/black-and-white/issues/18) |
+| T18 | LabVIEW 路线可行性、硬件对应机制与课时化制作方案 | M0 | T00 | 方案待确认 | [#19](https://github.com/cancan7777777/black-and-white/issues/19) |
 
 ## 每个任务的共同完成条件
 
