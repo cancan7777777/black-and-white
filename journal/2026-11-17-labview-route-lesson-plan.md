@@ -88,3 +88,11 @@
 ## 上下文压缩记录
 
 尚未压缩。恢复工作先读本文件与 `docs/labview-route.md`，再核对 `docs/tasks.md` 中 T18 行的 Issue 编号。
+
+### 2026-11-17 21:45 · 提交、推送与索引核对
+
+- 分支：`task/19-labview-route-lesson-plan`。
+- 提交：`6de6b02` `docs(#19): add LabVIEW route feasibility and lesson-based hardware mapping plan`，4 文件、+232 行；`git diff --cached --check` 退出码 0。
+- 推送：`git -c credential.helper= -c 'credential.helper=!gh auth git-credential' push -u origin task/19-labview-route-lesson-plan` 成功，远端新建同名分支。
+- 索引：`docs/tasks.md` 增 T18 行指向 #19；`.github/project-tasks.json` 增 T18 条目（tasks=19，`ConvertFrom-Json` 校验通过）。
+- 下一步：并入 `main` 并推送，在 #19 留验证评论。
