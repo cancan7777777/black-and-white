@@ -1,0 +1,27 @@
+# Secrets and machine-local settings
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials*.json
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.DS_Store
+Thumbs.db
+
+# Build and temporary outputs (keep source projects and intentional evidence)
+build/
+dist/
+node_modules/
+*.tmp
+*.bak
+~$*
+
+# Editor / tool caches
+.idea/
+.vscode/
+.pytest_cache/
+.mypy_cache/

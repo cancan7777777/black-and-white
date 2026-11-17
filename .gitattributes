@@ -1,0 +1,7 @@
+* text=auto
+*.md text eol=lf
+*.json text eol=lf
+*.png binary
+
+# Preserve the supplied reference file byte for byte.
+"黑白棋课程设计总体方案.md" -text
