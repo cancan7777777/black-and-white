@@ -2,6 +2,8 @@
 
 状态：待用户审阅的实现方案草案 v0.1。2026-11-17 仅完成规划建项，不启动实现。
 
+2026-11-18 进展：用户已明确授权 #20 的基础功能审查和离线 CubeMX 工程创建；按指定 second/thrid 工程参考配置 HSE→PLL×9→72 MHz，保留 C8/SWD。该项只覆盖工程初始化与本机验证，不代表下列全部实现阶段已经启动或实物条件已确认。结果入口见 `firmware/Othello_Basic/README.md` 与 `docs/reviews/2026-11-18-basic-function-audit.md`。
+
 ## 1. 目标与影响范围
 
 最终目标是通过 `requirements.md` 中 B01–B07、A01–A07、C01–C03 全部必做验收；AI 属于后续扩展。

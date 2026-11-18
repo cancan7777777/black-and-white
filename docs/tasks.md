@@ -4,7 +4,7 @@
 
 任务元数据见 [`.github/project-tasks.json`](../.github/project-tasks.json)，包含每项任务的目标、依赖、交付与验收标准。GitHub Issues 为任务状态入口，本文件保留本地索引。
 
-**本次仅执行 T00 建项；其他任务仅创建，不启动实现。** T00 完成不能代替 T01–T14 的澄清、实现和验收。
+2026-11-17 完成 T00 建项。2026-11-18 用户另行启动 T18（#20）：基础功能审查和离线 CubeMX 工程创建。T01–T17 的原有范围不因新工程生成而视为完成。
 
 ## 里程碑
 
@@ -39,6 +39,9 @@
 | T15 | 可选：AI 版本/许可/规则兼容 | M5 | T14 | 可选未开始 | [#16](https://github.com/cancan7777777/black-and-white/issues/16) |
 | T16 | 可选：桥接、推荐、人机对弈 | M5 | T15 | 可选未开始 | [#17](https://github.com/cancan7777777/black-and-white/issues/17) |
 | T17 | 可选研究：分析、复盘与胜率校准 | M5 | T16 | 可选未开始 | [#18](https://github.com/cancan7777777/black-and-white/issues/18) |
+| T18 | 审查基础功能部分1，创建 CubeMX/HAL/MDK 基础工程 | M0 | T00；用户明确启动本范围 | 已验证，PR 待合并 | [#20](https://github.com/cancan7777777/black-and-white/issues/20) / [PR #21](https://github.com/cancan7777777/black-and-white/pull/21) |
+
+T18 的审查结论见 [审查报告](reviews/2026-11-18-basic-function-audit.md)。它只补齐工程基础配置，不替代 #3/#4 的完整硬件与接口确认，也不关闭 #5–#10 的实际驱动、规则、串口和上位机实现任务。
 
 ## 每个任务的共同完成条件
 
