@@ -74,3 +74,10 @@
 - 原任务书图片没有限定 LabVIEW，LabVIEW 属于参考方案选型；此处仅给出建议，没有批准或实施技术路线变更。
 - 官方依据：NI https://www.ni.com/docs/en-US/bundle/labview/page/tutorial-wiring-objects-using-vi-scripting.html ；Microsoft https://learn.microsoft.com/en-us/dotnet/desktop/winforms/overview/ 、https://learn.microsoft.com/en-us/dotnet/desktop/wpf/xaml/ ；Qt https://doc.qt.io/qtforpython-6/PySide6/QtSerialPort/QSerialPort.html 。
 - 无 computer-use 调用、无程序修改、无依赖安装；开发继续暂停，仅提交咨询日志留痕。
+
+### 2026-11-18 · PA8 与 LED 模块接线咨询
+
+- 只读核对当前 .ioc：PA8 标记 LED_DATA，配置 TIM1_CH1 PWM，PSC=0、ARR=89，DMA1_Channel2；它是点阵数据输出，不是供电引脚。
+- 按本项目 5V WS2812B 方案，数据方向为 PA8 →（必要的 3.3V→5V 74AHCT125 电平转换）→ 330–470Ω 串联电阻 → 模块 DIN/IN；不是 DOUT。模块使用确认规格的独立 5V 供电，STM32/模块/转换器/电源共地。
+- 是否能省略电平转换取决于具体模块/芯片版本对 3.3V 高电平的支持，型号未确认时不保证 PA8 裸直连可靠；电阻不能替代电平转换。
+- 官方模块厂商依据：https://learn.adafruit.com/neopixel-levelshifter/shifting-levels 、https://learn.adafruit.com/adafruit-neopixel-uberguide?view=all 。本次没有接线、上电、computer-use 或程序修改；原开发继续暂停。
