@@ -80,6 +80,23 @@
 - 代码地址：https://github.com/cancan7777777/black-and-white/blob/task/22-basic-main/firmware/Othello_Basic/Core/Src/main.c
 - 本次没有操作父 LabVIEW 工作区、硬件或系统配置。
 
+### 2026-11-18 · 用户授权安装到本地 firmware
+
+- 用户新指令：“替换firware里的main.c”。目标确定为 D:/black&white/firmware/Othello_Basic/Core/Src/main.c。
+- 已检查父目录当前分支 task/9-labview-basic，相关 firmware 和源清单工具没有既有未提交改动；LabVIEW 文件仍由父任务管理，不覆盖、不切换分支。
+- 新 main 依赖 app_basic/app_platform/app_config 及 ot_* 核心；只复制 main 将无法编译，因此同步必需的 9 个配套 .c/.h、应用源登记与登记工具/生成钩子，再在目标工程验证 Keil。
+- 替换前将所有实际覆盖文件备份到父目录忽略的 build/backups 下；不复制 .ioc、不烧录、不更改串口参数或实际接线。
+- 本地安装不把 firmware 改动混入父 LabVIEW 分支的提交；代码版本和本次安装记录继续在 #22 独立分支追踪。
+
+### 2026-11-18 · 本地替换完成与构建
+
+- 已覆盖 D:/black&white/firmware/Othello_Basic/Core/Src/main.c，及其必需的应用/核心 .c/.h、application_sources.txt、源登记工具与生成钩子，共 13 个同步文件；逐文件 SHA-256 与独立分支源文件一致。
+- 已使用登记工具在目标 MDK 工程加入 4 个应用源，保持原 .ioc 和外设参数。补正文档中“main 循环为空”的过时描述。
+- 覆盖前的文件备份在 D:/black&white/build/backups/basic-main-27a892ea/，包含旧 main、MDK 工程、README 和原生成脚本；未删除旧证据。
+- 在 D:/black&white 目标目录实际执行 tools/build-keil.ps1：KEIL_EXIT=0，0 errors / 0 warnings，Code=13072、RO=416、RW=64、ZI=6872。
+- 未运行 CubeMX 再生成，既有 KO 限制没有被本次编译结果掩盖；没有实机上电、烧录。
+- LabVIEW 文件与父分支保持原状；父目录的本次 firmware 替换为未暂存工作区变更，避免擅自向其进行中的 LabVIEW 分支提交。软件版本、README 和安装留痕在 task/22-basic-main 提交推送。
+
 ## 结果与遗留
 
 执行中。软件接口隔离可以减少集成冲突，不能保证未知创新实现无需遵守接口或测试。
