@@ -65,3 +65,12 @@
 - 新输入依赖 keypad.h/ws2812.h 及实现，当前工作区未找到这些模块；它使用大写 OT_* 接口，而既有核心是 ot_init/ot_move/ot_command 等小写接口，需统一数据类型/接口并补驱动后才能判断可编译和实际运行。未进行编译或硬件测试。
 - 上位机 Main.vi 仍为 9764-byte 模板，原生组件绑定和运行连线未完成；36 项测试通过的是独立协议/模拟/组件逻辑，不是完整 LabVIEW 可视化界面验收。
 - 为遵守每次核查留痕约定，仅提交这份日志，程序与未完成上位机代码继续保留本地，不纳入此次日志提交。整个开发任务仍为 paused。
+
+### 2026-11-18 · 上位机技术路线咨询（不启动迁移）
+
+- 用户询问绑定/连线是否必须 computer-use，以及是否有 Agent 可直接操作的其它上位机方案。
+- NI 官方资料确认 VI Scripting 可以程序化创建控件和连线；此前未完成的是本机原生 VI 生成/绑定链路，不能表述为 LabVIEW 技术上必须依赖界面自动化。
+- 建议优先考虑独立 C# WinForms 上位机：可复用已有 C# 棋盘/串口/会话组件、原 C 模拟下位机及 36 项测试，直接通过源码和编译脚本维护，去掉 LabVIEW 容器绑定步骤。其它候选为 C#/WPF（XAML）与 Python/PySide6（QSerialPort）。
+- 原任务书图片没有限定 LabVIEW，LabVIEW 属于参考方案选型；此处仅给出建议，没有批准或实施技术路线变更。
+- 官方依据：NI https://www.ni.com/docs/en-US/bundle/labview/page/tutorial-wiring-objects-using-vi-scripting.html ；Microsoft https://learn.microsoft.com/en-us/dotnet/desktop/winforms/overview/ 、https://learn.microsoft.com/en-us/dotnet/desktop/wpf/xaml/ ；Qt https://doc.qt.io/qtforpython-6/PySide6/QtSerialPort/QSerialPort.html 。
+- 无 computer-use 调用、无程序修改、无依赖安装；开发继续暂停，仅提交咨询日志留痕。
