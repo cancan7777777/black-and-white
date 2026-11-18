@@ -73,6 +73,13 @@
 - 提交前检查 21 个变更文件，无编译产物/凭据格式，源码清单 27 个引用均存在且不重复，规则/协议副本与原核心一致。
 - 本收尾记录再次提交推送；最终 HEAD、工作区与远端同步在 #22 完成评论中记录，避免日志自引用自身提交 SHA。
 
+### 2026-11-18 · 用户要求更新 GitHub
+
+- 用户明确要求“更新到github”。核对现有实现提交 5cdea98c1c986924bafd378a9a3de203b76ff1a4 已在远端 task/22-basic-main，PR #23 为 OPEN，GitHub 可读取基础 main.c。
+- 本地无未提交的产品改动；本次只补记上传确认并推送日志，不制造产品代码变化，不自动合并 PR。
+- 代码地址：https://github.com/cancan7777777/black-and-white/blob/task/22-basic-main/firmware/Othello_Basic/Core/Src/main.c
+- 本次没有操作父 LabVIEW 工作区、硬件或系统配置。
+
 ## 结果与遗留
 
 执行中。软件接口隔离可以减少集成冲突，不能保证未知创新实现无需遵守接口或测试。
