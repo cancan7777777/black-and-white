@@ -1,6 +1,6 @@
 # Othello_Basic：STM32CubeMX 基础工程
 
-状态：基础配置已创建并经本机 Keil 编译通过（2026-11-18），尚未完成可运行游戏。
+状态：#22 新增基础 main/应用调度与硬件适配，目标编译和主机模拟测试通过；未实物验收。实现与后续创新接入边界见 [BASIC_MAIN.md](BASIC_MAIN.md)。
 
 本工程对应 GitHub [#20](https://github.com/cancan7777777/black-and-white/issues/20)，任务分支 `task/20-basic-audit-cubemx`。
 
@@ -68,6 +68,6 @@
 
 ## 尚未实现
 
-`main` 当前只初始化外设，循环为空；不自动启动 PWM/DMA 发送，不启动 UART 接收，也没有矩阵扫描。输入目录的 `othello.*`、`ot_protocol.*` 原样保存，但尚未加入并调用本 HAL 应用。
+`main` 现在调用 AppBasic/AppPlatform：处理基础键盘、UART 协议与异步点阵刷新；规则/协议核心已按原样加入工程。上位机实际 VI、真实接线、LED 时序/映射和串口实机联调仍须另行验证；此分支没有执行上电/烧录。
 
-后续必须完成 LED 编码/发送/复位/映射、矩阵扫描/消抖/坐标选择、UART 缓冲/协议/状态上传与主循环集成，以及实际 LabVIEW VI。完整缺项见 [基础功能审查报告](../../docs/reviews/2026-11-18-basic-function-audit.md)，原 #5–#10 保持未完成。未开展真实硬件测试、串口联调或功能验收。
+本次补入上述基础运行代码并用模拟 HAL 检查队列、消抖、DMA 缓冲和异常恢复；并未因此关闭 #5–#10 的完整实现/实物验收任务。历史审查报告是改动前基线，当前结果以 BASIC_MAIN.md 与 #22 日志为准。进阶与 AI 没有实现。本独立 worktree 的旧 CubeMX 重生成返回 KO，仍是已知限制。

@@ -26,7 +26,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "app_basic.h"
+#include "app_platform.h"
+#include "ot_protocol.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -46,7 +48,8 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+static char pending_frame[OT_LINE_MAX];
+static uint8_t frame_pending;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -67,7 +70,7 @@ void SystemClock_Config(void);
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-
+  AppBasicPorts ports;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -92,7 +95,13 @@ int main(void)
   MX_TIM1_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-
+  ports.can_send = AppPlatform_CanSend;
+  ports.send = AppPlatform_Send;
+  ports.render = AppPlatform_Render;
+  ports.context = 0;
+  AppPlatform_Init();
+  AppBasic_Init(&ports);
+  frame_pending = 0u;
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -102,6 +111,18 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    uint32_t now = HAL_GetTick();
+    char key;
+    AppPlatform_Tick(now);
+    if (!frame_pending)
+      frame_pending = AppPlatform_ReadFrame(pending_frame, sizeof(pending_frame));
+    if (frame_pending && AppBasic_ProcessFrame(pending_frame))
+      frame_pending = 0u;
+    key = AppPlatform_TakeKey();
+    if (key) AppBasic_HandleKey(key);
+    AppBasic_Tick(now);
+    /* SysTick/UART/DMA wake the scheduler; no blocking display or serial writes. */
+    __WFI();
   }
   /* USER CODE END 3 */
 }
@@ -145,7 +166,12 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+/* Single callback ownership: extensions register app observers, not duplicate HAL symbols. */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *uart) { AppPlatform_UartRxIRQ(uart); }
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *uart) { AppPlatform_UartTxIRQ(uart); }
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *uart) { AppPlatform_UartErrorIRQ(uart); }
+void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *timer) { AppPlatform_PwmDoneIRQ(timer); }
+void HAL_TIM_ErrorCallback(TIM_HandleTypeDef *timer) { AppPlatform_PwmErrorIRQ(timer); }
 /* USER CODE END 4 */
 
 /**
