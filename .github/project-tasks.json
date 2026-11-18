@@ -3,7 +3,7 @@
   "repository": "cancan7777777/black-and-white",
   "visibility": "public",
   "planning_date": "2026-11-17",
-  "execution_boundary": "本次只完成 T00 规划建项；其他任务仅创建，须由用户另行启动，不开始实验实现。",
+  "execution_boundary": "2026-11-17 完成 T00 规划建项；2026-11-18 用户明确启动 T18 基础审查和离线 CubeMX 工程创建。其他任务须另行启动，不因骨架生成而视为已实现。",
   "milestones": [
     {"title": "M0 需求与基线", "description": "需求与 GitHub 建项、规则澄清、硬件环境确认、接口设计。仅建项完成不代表本里程碑完成。"},
     {"title": "M1 下位机基础", "description": "LED、矩阵键盘、黑白棋规则和下位机串口端点，覆盖 B01–B05。"},
@@ -120,6 +120,13 @@
       "milestone": "M5 可选 AI 扩展", "priority": "P3", "initial_status": "可选未开始", "requirements": ["X02", "X03"], "depends_on": ["T16"],
       "deliverables": ["局面评分、候选落子和玩家决策对比", "如实施胜率估计，提交独立数据与校准证据"],
       "acceptance": ["分析视图与实局/历史回放状态隔离，评价分有清楚含义和单位/无量纲标记", "没有独立校准时只显示评分/优势方向，不伪装为精确胜率", "如开展校准，记录样本来源、阶段划分、独立验证和误差", "EViews、自适应难度等额外范围另行明确，不影响必做系统稳定性"]
+    },
+    {
+      "id": "T18", "title": "审查基础功能部分1并创建 STM32CubeMX 基础工程",
+      "issue_number": 20,
+      "milestone": "M0 需求与基线", "priority": "P0", "initial_status": "2026-11-18 用户已启动本范围", "requirements": ["B01", "B02", "B03", "B04", "B05", "B06", "B07"], "depends_on": ["T00"],
+      "deliverables": ["基础功能缺项审查、原始输入基线与本机核心测试结果", "F103C8 .ioc、生成的 HAL/MDK 骨架、引脚时钟说明与编译证据"],
+      "acceptance": ["逐项说明 B01–B07 的源码/硬件/上位机缺失，输入包不被覆盖", "按用户指定 second/thrid 参考配置 8 MHz HSE/72 MHz，保留 C8/SWD，正确配置键盘 GPIO、USART1、TIM1_CH1/DMA 与 NVIC", "由本机 CubeMX 实际加载并生成，使用已安装 Keil 编译或明确记录真实阻碍", "处理工作区 & 对旧 CubeMX 的影响，工程可再生成且无残留临时盘符依赖", "在任务分支提交、推送、创建 PR 并保留 journal；不声称游戏功能或实物验收已完成"]
     }
   ]
 }

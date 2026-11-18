@@ -1,0 +1,17 @@
+{
+  "recorded_at": "2026-11-18",
+  "issue": 20,
+  "note": "用户输入包原样保留；哈希在本次审查、工程生成与提交前再次核对。",
+  "files": [
+    {"path": "基础功能部分1/othello_basic/Core/Inc/othello.h", "sha256": "d84bdf3ae11811842426d294a9118f4da59dfedd9bc50005606d7a94a0e1bd1f"},
+    {"path": "基础功能部分1/othello_basic/Core/Inc/ot_protocol.h", "sha256": "e5ce1a735bfa6418a96ccd1bf5e76b58a879b7a4c2d212c3b0823f8f29b78ce2"},
+    {"path": "基础功能部分1/othello_basic/Core/Src/othello.c", "sha256": "5f72a4632edda13d6402a9d0a9a9a8194b6d98817a7f1c37212bd85ef0bbe5d7"},
+    {"path": "基础功能部分1/othello_basic/Core/Src/ot_protocol.c", "sha256": "4eb6d357e89f73db10644e58cc101f2eb036666588c41a508f0f188557014455"},
+    {"path": "基础功能部分1/othello_basic/docs/CubeMX配置指南.md", "sha256": "3bfeb7017e83105b081b02b354dc3be6c09e07a1248552c1b31c1ccd1958cbc1"},
+    {"path": "基础功能部分1/othello_basic/docs/通信与LabVIEW.md", "sha256": "9a046956547299cedd97ba0afc9b8268b50b90c8fa967e7e906cc6d636c845e3"},
+    {"path": "基础功能部分1/othello_basic/EViews/Basic_Statistics.prg", "sha256": "2a596f72d1ac77eb38b1f584c4699bf49872a1c0bdc27404ef56f421f039b346"},
+    {"path": "基础功能部分1/othello_basic/EViews/README.md", "sha256": "ae95c60aae05d1c21a96f45e68b469a99f9fe8c18293ec9fef6b36f2e0102946"},
+    {"path": "基础功能部分1/othello_basic/README.md", "sha256": "daf59d944d19e3200c81091455e5db1bd75a99175b439e9d02f76f64015d27cc"},
+    {"path": "基础功能部分1/othello_basic/tests/test.c", "sha256": "405f919f9cafd629ca5983c89aa77c58979004bef61de6467e6f6135fdb84e47"}
+  ]
+}
