@@ -1,6 +1,6 @@
 # 基础功能部分1审查与 STM32CubeMX 工程创建
 
-- **状态**：in-progress
+- **状态**：done
 - **开始**：2026-11-18（Asia/Shanghai）
 - **最后更新**：2026-11-18（Asia/Shanghai）
 - **工作目录**：`D:\black&white`
@@ -92,13 +92,28 @@
 - 根 README/AGENTS/阶段方案/任务表更新为本次用户已授权的离线配置范围，未关闭原 #3–#10 的确认/实现/联调任务。
 - 下一步：暂存任务相关文件，检查原创文档/配置格式与敏感信息，提交/推送分支并创建关联 #20 的 PR。生成库、原输入作为保留来源不统一改写格式。
 
+### 2026-11-18 · Git 提交、公开推送与 PR
+
+- 本次原创文档、配置和工具的 `git diff --cached --check` 通过；没有为格式统一改写 ST/CMSIS 或用户输入。暂存内容未发现凭据格式；10 个输入文件的 Git blob SHA-256 也与原值一致。
+- 提交 `f3c3c52`：`feat(#20): add CubeMX base project and basic-function audit`，正文 `Refs #20`；已推送 `origin/task/20-basic-audit-cubemx`。
+- 创建并附加 [PR #21](https://github.com/cancan7777777/black-and-white/pull/21)，正文 `Closes #20`。实现交付保留在任务分支，未擅自合并 main；#20 留待 PR 合并关闭，原基础实现任务不关闭。
+- 收尾发现 Keil 的启动汇编清单 `.lst` 位于 MDK 根目录而非输出目录，补充忽略并只从 Git 索引移除该生成清单，不删除本地编译证据、不改写已推送历史。
+- 本次收尾提交记录 PR 与结果；最终提交 SHA、远端同步和工作区状态会在 #20 评论及最终回复给出，避免日志自引用自身提交哈希。
+
 ## 结果
 
-待生成和验证后填写。
+- 需求审查：`docs/reviews/2026-11-18-basic-function-audit.md`，明确基础功能尚缺键盘/点阵/UART HAL 与应用集成、实际 LabVIEW VI；原规则/协议核心已通过本机现有测试。
+- 工程：`firmware/Othello_Basic/Othello_Basic.ioc` 与 `MDK-ARM/Othello_Basic.uvprojx`。C8、用户参考的 HSE 8 MHz→72 MHz、SWD、USART1 115200 8N1、TIM1_CH1 800 kHz/DMA1_CH2、矩阵 GPIO/NVIC 均已配置并核对实际生成代码。
+- 最终重生成 + ARMCC 5.06 构建均通过，0 errors / 0 warnings；原输入核心测试 PASS（其 C4996 警告已说明），10 份输入字节保持原样，临时盘符已清除。
+- GitHub：[Issue #20](https://github.com/cancan7777777/black-and-white/issues/20) / [PR #21](https://github.com/cancan7777777/black-and-white/pull/21)；分支 `task/20-basic-audit-cubemx`，不自动合并 main。
+- 完成的是离线工程创建和基础配置，不是可运行黑白棋系统，也没有实物验收或烧录。
 
 ## 遗留
 
-本次不宣称实体基础功能完成，所有未实现部分将以需求编号列出。
+- 原 #3/#4 的实物/接口确认，以及 #5–#10 的驱动、应用和上位机实现仍未完成；本次用户授权不扩展到这些完整实现。
+- 实际 HSE 晶振、点阵供电/第三引脚/数据方向、键盘排针、USB-TTL 电平和 WS2812 版本/时序须在接线与运行前核实。
+- 主循环为空，尚未接入原规则核心、启动 PWM/UART 接收或键盘扫描；所有实际基本功能验收仍需后续实施。
+- PR #21 待合并；后续任务从确认后的基线开始，不在未授权情况下刷机或自动合并。
 
 ## 上下文恢复
 

@@ -44,4 +44,5 @@ mx.scratch
 *.hex
 *.map
 *.lnp
+*.lst
 *.htm

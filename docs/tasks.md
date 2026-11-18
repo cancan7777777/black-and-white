@@ -39,7 +39,7 @@
 | T15 | 可选：AI 版本/许可/规则兼容 | M5 | T14 | 可选未开始 | [#16](https://github.com/cancan7777777/black-and-white/issues/16) |
 | T16 | 可选：桥接、推荐、人机对弈 | M5 | T15 | 可选未开始 | [#17](https://github.com/cancan7777777/black-and-white/issues/17) |
 | T17 | 可选研究：分析、复盘与胜率校准 | M5 | T16 | 可选未开始 | [#18](https://github.com/cancan7777777/black-and-white/issues/18) |
-| T18 | 审查基础功能部分1，创建 CubeMX/HAL/MDK 基础工程 | M0 | T00；用户明确启动本范围 | 执行中（离线配置） | [#20](https://github.com/cancan7777777/black-and-white/issues/20) |
+| T18 | 审查基础功能部分1，创建 CubeMX/HAL/MDK 基础工程 | M0 | T00；用户明确启动本范围 | 已验证，PR 待合并 | [#20](https://github.com/cancan7777777/black-and-white/issues/20) / [PR #21](https://github.com/cancan7777777/black-and-white/pull/21) |
 
 T18 的审查结论见 [审查报告](reviews/2026-11-18-basic-function-audit.md)。它只补齐工程基础配置，不替代 #3/#4 的完整硬件与接口确认，也不关闭 #5–#10 的实际驱动、规则、串口和上位机实现任务。
 
