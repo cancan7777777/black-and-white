@@ -18,3 +18,9 @@
 - 端口选择实际 COM，设置 115200、8 数据位、`None` 校验、1 停止位，点「连接」。首次读取收到 `RX @GAME,...` 且棋盘呈现下位机当前盘面才算同步成功。若下位机固件较旧，兼容帧为 `@STATE`。
 - 新开局时，用实体键盘在第 3 行第 4 列按 `5`，预期 LabVIEW 显示黑 4 白 1、轮到白方。再在 LabVIEW 选第 3 行第 3 列（C3），点「确认落子」，预期两端黑 3 白 3、轮到黑方。点「断开」释放串口，点「结束上位机」停止 VI。上述为实物验收的预期结果，未对板卡进行操作。
 - 若界面报告连接成功但棋盘仍为空，可点「刷新棋盘」看通信日志是否有 `RX` 响应。仅有 `TX` 时核对实际 COM、串口参数、板卡供电和固件、TX/RX 交叉、GND 共地。若串口提示被占用，关闭占用该端口的程序后重试。
+
+## 同日 · 烧录入口核查
+
+- 用户询问 HEX 烧录与 LabVIEW 的分工。沿用 #10，核对当前 CubeMX 工程下的 `firmware/Othello_Basic/MDK-ARM/Othello_Basic.uvprojx`。目标 STM32F103C8，Keil 工程启用 HEX 输出，烧录接口配置引用 ST-LINK 驱动。LabVIEW 在固件启动后以 USART1 的 COM 口进入实物对局。
+- 运行 `tools/build-keil.ps1`，当前 `main.c`、`app_basic.c`、`ot_match.c`、`ot_protocol.c` 均编译入工程，结果 0 错误、0 警告。重新生成 `firmware/Othello_Basic/MDK-ARM/Othello_Basic/Othello_Basic.hex`，44 KB 级文件，核对 Intel HEX 扩展线性地址记录为 `0x0800`，末尾有 EOF。
+- 用现有 Keil + ST-LINK（SWD）可从工程执行 Flash → Download。也可在支持 Intel HEX 的烧录软件中直接选择同一个 HEX，例如 STM32CubeProgrammer。本轮只在本机编译，没有写入板卡。
