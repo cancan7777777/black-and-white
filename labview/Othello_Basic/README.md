@@ -49,3 +49,16 @@
 - LabVIEW 正在使用旧组件时请保存工程并重新打开。若仍显示旧按钮，重新启动 LabVIEW 会加载新组件。
 
 规则和帧格式见[进阶规则与通信约定](../../docs/protocol-advanced.md)。
+
+## Egaroucid 本机 AI 对弈
+
+1. 运行 `Main.vi`，选「离线模拟」并连接。用实体板时，选择「真实串口」并连接支持进阶命令的固件。
+2. 在「AI 设置」中选本机的 Egaroucid Console `.exe`。保留可执行文件和同目录的 `resources`。路径会保存在本地 `bin/EgaroucidPath.txt`。
+3. 把「模式」选为 **Egaroucid**，确认 AI 等级，点「设定模式」开始新局。玩家执黑。每次黑方落子确认后，Egaroucid 执白自动应手。AI 等级默认 5，可选 0–60。等级越高，可能越容易超过 10 秒等待上限。
+4. 暂停可中断思考，继续时按当前棋盘重新计算。搜索出错或超时会显示原因并恢复手动落子。刷新棋盘后，可重新选择 Egaroucid 模式开始新局。
+
+该选项用普通棋局的规则和存档分类。连接 STM32 时，AI 仍通过原有串口落子命令，由 STM32 核对版本和合法性。用实体键盘时请执黑，等候白方自动应手。切到固件闯关模式后，由 STM32 接管白方。正式棋局沿用一方无合法位置即结束的规则。
+
+本机验证版本是 Egaroucid for Console 7.8.2 Windows x64 AMD AVX512。上位机以进程方式调用引擎，LabVIEW 可继续使用现有 x86 组件。引擎及其 GPL-3.0 资源由用户本地提供。 [Egaroucid 控制台文档](https://www.egaroucid.nyanyan.dev/en/console/) · [7.8.2 发布页](https://github.com/Nyanyan/Egaroucid/releases/tag/console_v7.8.2)
+
+可在原有构建命令上加 `-EgaroucidExecutable <控制台程序完整路径>`，运行实际引擎的整局离线回归测试。

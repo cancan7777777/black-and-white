@@ -31,13 +31,21 @@ class BasicTests {
         }
         return null;
     }
-    static void WaitForPanel(Func<bool> predicate, string description) {
+    static void WaitForPanel(Func<bool> predicate, string description, int timeoutMs=3000) {
         var elapsed = Stopwatch.StartNew();
-        while (!predicate() && elapsed.ElapsedMilliseconds < 3000) {
+        while (!predicate() && elapsed.ElapsedMilliseconds < timeoutMs) {
             Application.DoEvents();
             Thread.Sleep(5);
         }
         Check(predicate(), description);
+    }
+
+    static void WaitForUi(int milliseconds) {
+        var elapsed=Stopwatch.StartNew();
+        while(elapsed.ElapsedMilliseconds<milliseconds) {
+            Application.DoEvents();
+            Thread.Sleep(5);
+        }
     }
     static void CheckPanel() {
         using (var panel = new OthelloPanel()) {
@@ -79,6 +87,106 @@ class BasicTests {
                 "panel receives the automatic white move without another click");
             finish.PerformClick();
             Check(panel.Stopped && board.Board == null && !move.Enabled, "panel finish stops and clears the session");
+        }
+    }
+
+    static void CheckEgaroucid(string enginePath) {
+        string config=EgaroucidEngine.ConfigPath;
+        byte[] previousConfig=File.Exists(config)?File.ReadAllBytes(config):null;
+        string folder=Path.Combine(Path.GetTempPath(),"Othello-Egaroucid-"+Guid.NewGuid().ToString("N"));
+        try {
+            var archive=new GameArchive(folder);
+            using(var panel=new OthelloPanel(archive)) {
+                panel.CreateControl();
+                panel.Start();
+                var connect=FindControl<Button>(panel,b=>b.Text=="连接");
+                var disconnect=FindControl<Button>(panel,b=>b.Text=="断开");
+                var apply=FindControl<Button>(panel,b=>b.Text=="设定模式");
+                var move=FindControl<Button>(panel,b=>b.Text=="确认落子");
+                var pause=FindControl<Button>(panel,b=>b.Text=="暂停");
+                var resume=FindControl<Button>(panel,b=>b.Text=="继续");
+                var start=FindControl<Button>(panel,b=>b.Text=="开始");
+                var board=FindControl<BoardView>(panel,b=>true);
+                var modes=FindControl<ComboBox>(panel,c=>c.Items.Contains("Egaroucid"));
+                var row=FindControl<NumericUpDown>(panel,n=>n.Maximum==8);
+                var col=FindControl<NumericUpDown>(panel,n=>n.Maximum==8&&n!=row);
+                connect.PerformClick();
+                WaitForPanel(()=>board.Board!=null && apply.Enabled,"offline board connects before Egaroucid");
+                modes.SelectedItem="Egaroucid";
+                File.WriteAllText(config,Path.Combine(folder,"missing.exe"));
+                uint openingRevision=board.Board.Revision;
+                apply.PerformClick();
+                Check(board.Board.Revision==openingRevision && move.Enabled &&
+                    FindControl<Label>(panel,l=>l.Text.Contains("选择 Egaroucid 控制台程序"))!=null,
+                    "missing engine leaves the existing manual game usable");
+
+                File.WriteAllText(config,enginePath);
+                apply.PerformClick();
+                WaitForPanel(()=>FindControl<Label>(panel,l=>l.Text.Contains("Egaroucid · 玩家执黑"))!=null,
+                    "Egaroucid mode activates after the casual board confirms the restart");
+                move.PerformClick();
+                WaitForPanel(()=>board.Board.Turn==2 && !move.Enabled,"white belongs to Egaroucid");
+                WaitForUi(160);
+                pause.PerformClick();
+                WaitForPanel(()=>board.Board.Match.Phase==GamePhase.Paused && resume.Enabled,"pause reaches the match while AI mode is enabled");
+                string pausedCells=board.Board.Cells;
+                WaitForUi(850);
+                Check(board.Board.Cells==pausedCells && !move.Enabled,"no AI move is applied during pause");
+                resume.PerformClick();
+                try {
+                    WaitForPanel(()=>board.Board.Turn==1 && board.Board.White==3 && board.Board.Black==3 && move.Enabled,
+                        "actual Egaroucid engine responds with one confirmed white move",12000);
+                } catch(Exception error) {
+                    var log=FindControl<TextBox>(panel,t=>t.Multiline&&t.ReadOnly);
+                    throw new InvalidOperationException("Egaroucid opening diagnostic:"+Environment.NewLine+log.Text,error);
+                }
+                Check(board.Board.Cells[18]=='2'||board.Board.Cells[20]=='2'||board.Board.Cells[34]=='2',
+                    "opening answer uses a valid white coordinate in host orientation");
+
+                int fullGameMoves=2;
+                while(board.Board.Status==0 && fullGameMoves<60) {
+                    uint revision=board.Board.Revision;
+                    for(int cell=0;cell<64;cell++) {
+                        if(board.Board.Cells[cell]!='0') continue;
+                        row.Value=cell/8+1;col.Value=cell%8+1;
+                        move.PerformClick();
+                        WaitForPanel(()=>board.Board.Revision!=revision || move.Enabled,"black attempt settles");
+                        if(board.Board.Revision!=revision) break;
+                    }
+                    Check(board.Board.Revision!=revision,"a valid black move is accepted before terminal state");
+                    fullGameMoves++;
+                    if(board.Board.Turn==2) {
+                        uint whiteRevision=board.Board.Revision;
+                        WaitForPanel(()=>board.Board.Revision!=whiteRevision && (board.Board.Status==1 || move.Enabled),
+                            "real engine reply is confirmed before the next black turn",12000);
+                        fullGameMoves++;
+                    }
+                }
+                Check(board.Board.Status==1 && board.Board.Turn==0 && board.Board.Match.Result==GameResult.Board,
+                    "Egaroucid match terminates using course rules");
+                WaitForUi(600);
+                Check(board.Board.Black+board.Board.White==4+fullGameMoves && !move.Enabled,
+                    "terminal board has one new piece per confirmed move and stays locked");
+                Console.WriteLine("Egaroucid offline match: "+fullGameMoves+" moves, black "+board.Board.Black+", white "+board.Board.White);
+
+                start.PerformClick();
+                WaitForPanel(()=>board.Board.Cells==InitialBoard()&&move.Enabled,"a new AI round can start");
+                row.Value=3;col.Value=4;move.PerformClick();
+                WaitForPanel(()=>board.Board.Turn==2&&disconnect.Enabled,"disconnect can interrupt the AI turn");
+                disconnect.PerformClick();
+                connect.PerformClick();
+                WaitForPanel(()=>board.Board!=null && board.Board.Cells==InitialBoard() && move.Enabled,
+                    "reconnect has an independent fresh manual game");
+                WaitForUi(850);
+                Check(board.Board.Cells==InitialBoard() && board.Board.Turn==1,"no stale AI result reaches the new connection");
+            }
+        } finally {
+            if(previousConfig!=null) File.WriteAllBytes(config,previousConfig);
+            else if(File.Exists(config)) File.Delete(config);
+            if(Directory.Exists(folder)) {
+                foreach(string file in Directory.GetFiles(folder)) File.Delete(file);
+                Directory.Delete(folder);
+            }
         }
     }
 
@@ -209,7 +317,7 @@ class BasicTests {
         }
     }
     [STAThread]
-    static int Main() {
+    static int Main(string[] args) {
         try {
             Check(Protocol.Crc("123456789")==0x29B1,"independent CCITT-FALSE vector");
             Check(Protocol.Fields("@GET,1,2792\n")[0]=="@GET","independent Python binascii GET frame vector");
@@ -247,6 +355,7 @@ class BasicTests {
             }
             Reject(delegate { new SerialSettings { DataBits=9 }.Validate(); },"invalid data bits");
             Reject(delegate { new SerialSettings { DataBits=8,StopBits=StopBits.OnePointFive }.Validate(); },"invalid 1.5 stop bits combination");
+            if(args.Length!=0) CheckEgaroucid(args[0]);
             CheckPanel();
             CheckAdvanced();
             CheckArchive();

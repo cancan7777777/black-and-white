@@ -1,4 +1,4 @@
-param([string]$VisualStudioRoot = 'D:\VISUAL STUDIO\vs 2022\community', [string]$OutputDirectory)
+param([string]$VisualStudioRoot = 'D:\VISUAL STUDIO\vs 2022\community', [string]$OutputDirectory, [string]$EgaroucidExecutable)
 $ErrorActionPreference='Stop'
 $root=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $project=Join-Path $root 'labview/Othello_Basic'
@@ -19,12 +19,13 @@ if($LASTEXITCODE -ne 0){throw 'Native match tests build failed'}
 & "$build/MatchTests.exe"
 if($LASTEXITCODE -ne 0){throw 'Native match tests failed'}
 $csc=Join-Path $env:WINDIR 'Microsoft.NET/Framework/v4.0.30319/csc.exe'
-$hostSources=@('Protocol.cs','Transport.cs','HostSession.cs','OthelloPanel.cs','GameArchive.cs','ArchiveWindow.cs') | ForEach-Object { (Resolve-Path -LiteralPath (Join-Path $project ('src\'+$_))).Path }
+$hostSources=@('Protocol.cs','Transport.cs','HostSession.cs','OthelloPanel.cs','GameArchive.cs','ArchiveWindow.cs','EgaroucidEngine.cs') | ForEach-Object { (Resolve-Path -LiteralPath (Join-Path $project ('src\'+$_))).Path }
 & $csc /nologo /target:library /platform:x86 ("/out:"+(Join-Path $bin 'Othello.Basic.dll')) /r:System.Windows.Forms.dll /r:System.Drawing.dll @hostSources
 if($LASTEXITCODE -ne 0){throw 'LabVIEW embedded control build failed'}
 & $csc /nologo /platform:x86 /r:System.Windows.Forms.dll ("/out:"+(Join-Path $bin 'BasicTests.exe')) ("/r:"+(Join-Path $bin 'Othello.Basic.dll')) (Join-Path $project 'tests\BasicTests.cs')
 if($LASTEXITCODE -ne 0){throw 'Host tests build failed'}
-& "$bin/BasicTests.exe"
+if($EgaroucidExecutable){& "$bin/BasicTests.exe" (Resolve-Path -LiteralPath $EgaroucidExecutable).Path}
+else {& "$bin/BasicTests.exe"}
 if($LASTEXITCODE -ne 0){throw 'Host tests failed'}
 & $csc /nologo /platform:x86 /r:System.Web.Extensions.dll ("/out:"+(Join-Path $build 'LabViewAutomation.exe')) (Join-Path $root 'tools\LabViewAutomation.cs')
 if($LASTEXITCODE -ne 0){throw 'LabVIEW automation helper build failed'}
