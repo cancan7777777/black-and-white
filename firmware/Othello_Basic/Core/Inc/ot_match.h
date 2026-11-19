@@ -5,6 +5,7 @@
 #define OT_WIN_SCORE 188u
 #define OT_DEFAULT_SECONDS 180u
 #define OT_MAX_SECONDS 3600u
+#define OT_COMPUTER_DELAY_MS 250u
 
 typedef enum { OT_CASUAL, OT_CHALLENGE, OT_TIMED } OtMode;
 typedef enum { OT_RUNNING, OT_PAUSED, OT_EDITING, OT_FINISHED } OtPhase;
@@ -19,13 +20,14 @@ typedef struct {
     OtPhase phase, before_edit;
     OtResult result;
     uint32_t round, total, remaining_ms, elapsed_ms, clock_ms;
-    uint16_t limit_seconds;
+    uint16_t limit_seconds, computer_wait_ms;
     uint8_t losses, edited, clock_seen;
 } OtMatch;
 
 void ot_match_init(OtMatch *match);
-/* Returns true when time expires and the round is settled. */
+/* Returns true when the computer moves or the timer settles the round. */
 uint8_t ot_match_tick(OtMatch *match, uint32_t now);
+uint8_t ot_match_computer_turn(const OtMatch *match);
 uint8_t ot_match_move(OtMatch *match, uint8_t row, uint8_t col);
 uint8_t ot_match_control(OtMatch *match, OtControl action, uint32_t value, uint32_t seconds);
 uint8_t ot_match_edit(OtMatch *match, uint8_t row, uint8_t col, uint8_t piece);

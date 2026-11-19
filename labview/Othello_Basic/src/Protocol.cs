@@ -29,6 +29,8 @@ namespace Othello.Basic {
         public int White { get; private set; }
         public string Cells { get; private set; }
         public MatchState Match { get; internal set; }
+        public bool ComputerOpponent { get; internal set; }
+        public bool ComputerTurn { get { return ComputerOpponent && Turn==2 && Match.Phase==GamePhase.Running; } }
         public BoardState(uint seq, uint revision, int turn, int status, int black, int white, string cells) {
             Sequence=seq; Revision=revision; Turn=turn; Status=status; Black=black; White=white; Cells=cells;
         }
@@ -67,7 +69,7 @@ namespace Othello.Basic {
             return value;
         }
         public static BoardState ParseState(string[] f) {
-            bool advanced=f.Length==18 && f[0]=="@GAME";
+            bool advanced=f.Length==18 && (f[0]=="@GAME" || f[0]=="@GAME2");
             if(!advanced && (f.Length!=8 || f[0]!="@STATE")) throw new FormatException("棋盘帧字段错误");
             uint seq=Number(f[1]), rev=Number(f[2]), turn=Number(f[3]), status=Number(f[4]), black=Number(f[5]), white=Number(f[6]);
             string cells=f[7]; int actualBlack=0, actualWhite=0;

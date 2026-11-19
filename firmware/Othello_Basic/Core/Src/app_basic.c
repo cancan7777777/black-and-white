@@ -127,7 +127,7 @@ uint8_t AppBasic_ProcessFrame(const char *frame)
     round = app.match.round;
     length = ot_match_command(&app.match, frame, response, sizeof(response));
     if (length > 0) {
-        if (!strncmp(response, "@GAME,", 6u)) app.advanced = 1u;
+        if (!strncmp(response, "@GAME,", 6u) || !strncmp(response, "@GAME2,", 7u)) app.advanced = 1u;
         if (!strncmp(response, "@STATE,", 7u)) app.advanced = 0u;
         if (!app.ports.send(response, (size_t)length, app.ports.context)) app.broadcast = 1u;
     }

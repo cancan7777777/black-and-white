@@ -13,13 +13,13 @@ namespace Othello.Basic {
         void Send(string frame);
     }
     public sealed class SimulatedTransport : ITransport {
-        const string SimulatorLibrary = "OthelloSimulator.dll";
+        const string SimulatorLibrary = "OthelloSimulatorV2.dll";
         [DllImport("kernel32.dll", EntryPoint="LoadLibraryW", CharSet=CharSet.Unicode, SetLastError=true, ExactSpelling=true)]
         static extern IntPtr LoadLibrary(string path);
         static readonly Lazy<IntPtr> SimulatorModule = new Lazy<IntPtr>(LoadSimulator);
-        [DllImport("OthelloSimulator.dll",CallingConvention=CallingConvention.Cdecl)] static extern IntPtr sim_create();
-        [DllImport("OthelloSimulator.dll",CallingConvention=CallingConvention.Cdecl)] static extern void sim_destroy(IntPtr game);
-        [DllImport("OthelloSimulator.dll",CallingConvention=CallingConvention.Cdecl,CharSet=CharSet.Ansi)] static extern int sim_exchange(IntPtr game,string request,StringBuilder response,uint capacity);
+        [DllImport(SimulatorLibrary,CallingConvention=CallingConvention.Cdecl)] static extern IntPtr sim_create();
+        [DllImport(SimulatorLibrary,CallingConvention=CallingConvention.Cdecl)] static extern void sim_destroy(IntPtr game);
+        [DllImport(SimulatorLibrary,CallingConvention=CallingConvention.Cdecl,CharSet=CharSet.Ansi)] static extern int sim_exchange(IntPtr game,string request,StringBuilder response,uint capacity);
         IntPtr game;
         public event Action<string> Received;
         public event Action<string> Failed;

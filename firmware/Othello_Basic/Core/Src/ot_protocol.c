@@ -20,9 +20,9 @@ int ot_state(const OtGame *g, uint32_t seq, char *out, size_t cap)
     return finish(out, cap, state_payload(g, "@STATE", seq, out, cap));
 }
 
-int ot_game_state(const OtMatch *m, uint32_t seq, char *out, size_t cap)
+static int game_state(const OtMatch *m, const char *tag, uint32_t seq, char *out, size_t cap)
 {
-    int base = state_payload(&m->game, "@GAME", seq, out, cap);
+    int base = state_payload(&m->game, tag, seq, out, cap);
     int n;
     if (base < 0 || (size_t)base >= cap) return -1;
     n = snprintf(out + base, cap - (size_t)base, ",%u,%u,%lu,%lu,%u,%lu,%lu,%u,%u,%u",
@@ -31,6 +31,11 @@ int ot_game_state(const OtMatch *m, uint32_t seq, char *out, size_t cap)
                  (unsigned long)m->elapsed_ms, m->edited, (unsigned)m->result, m->limit_seconds);
     if (n < 0 || (size_t)n >= cap - (size_t)base) return -1;
     return finish(out, cap, base + n);
+}
+
+int ot_game_state(const OtMatch *m, uint32_t seq, char *out, size_t cap)
+{
+    return game_state(m, "@GAME", seq, out, cap);
 }
 static int err(uint32_t seq,const char *why,char *out,size_t cap){return finish(out,cap,snprintf(out,cap,"@ERROR,%lu,%s",(unsigned long)seq,why));}
 static int number(const char *s,uint32_t *v){uint32_t n=0;unsigned d;if(!s||!*s)return 0;while(*s){if(*s<'0'||*s>'9')return 0;d=(unsigned)(*s++-'0');if(n>(UINT32_MAX-d)/10u)return 0;n=n*10u+d;}*v=n;return 1;}
@@ -60,6 +65,7 @@ int ot_match_command(OtMatch *m, const char *line, char *out, size_t cap)
     if (count < 2u || !number(fields[1], &seq) || !seq) return err(0, "FORMAT", out, cap);
     if (!strcmp(buf, "@GET") && count == 2u) return ot_state(&m->game, seq, out, cap);
     if (!strcmp(buf, "@SYNC") && count == 2u) return ot_game_state(m, seq, out, cap);
+    if (!strcmp(buf, "@SYNC2") && count == 2u) return game_state(m, "@GAME2", seq, out, cap);
 
     legacy = !strcmp(buf, "@MOVE");
     move = legacy || !strcmp(buf, "@PLAY");
@@ -77,6 +83,7 @@ int ot_match_command(OtMatch *m, const char *line, char *out, size_t cap)
             return err(seq, "FORMAT", out, cap);
         if (move) {
             if (m->phase != OT_RUNNING) return err(seq, "NOT_RUNNING", out, cap);
+            if (ot_match_computer_turn(m)) return err(seq, "COMPUTER_TURN", out, cap);
             if (!ot_match_move(m, (uint8_t)a, (uint8_t)b)) return err(seq, "ILLEGAL", out, cap);
         } else {
             if (!number(fields[5], &piece) || piece > OT_WHITE) return err(seq, "FORMAT", out, cap);

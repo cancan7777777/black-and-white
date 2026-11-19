@@ -63,6 +63,14 @@ class BasicTests {
                 "embedded pause disables moves and offers resume");
             resume.PerformClick();
             WaitForPanel(() => board.Board.Match.Phase == GamePhase.Running && move.Enabled,"embedded resume restores moves");
+            var modes=FindControl<ComboBox>(panel, control=>control.Items.Contains("闯关"));
+            var apply=FindControl<Button>(panel, button=>button.Text=="设定模式");
+            modes.SelectedIndex=1; apply.PerformClick();
+            WaitForPanel(()=>board.Board.ComputerOpponent && move.Enabled,"challenge panel confirms the computer opponent");
+            move.PerformClick();
+            WaitForPanel(()=>board.Board.ComputerTurn && !move.Enabled,"panel waits for the computer after the black move");
+            WaitForPanel(()=>board.Board.Turn==1 && board.Board.Black==3 && board.Board.White==3 && move.Enabled,
+                "panel receives the automatic white move without another click");
             finish.PerformClick();
             Check(panel.Stopped && board.Board == null && !move.Enabled, "panel finish stops and clears the session");
         }
@@ -72,18 +80,20 @@ class BasicTests {
         using(var host=new HostSession()) {
             var legacy=new FakeTransport();
             host.Connect(legacy);
-            Check(legacy.Last.StartsWith("@SYNC,1,"),"new host probes advanced protocol");
+            Check(legacy.Last.StartsWith("@SYNC2,1,"),"new host probes computer opponent");
             legacy.Inject(Protocol.Frame("@ERROR,1,COMMAND"));
-            Check(legacy.Last.StartsWith("@GET,2,"),"legacy negotiation falls back to GET");
-            legacy.Inject(State(2,1,InitialBoard(),1,0,2,2));
+            Check(legacy.Last.StartsWith("@SYNC,2,"),"computer negotiation falls back to previous extended protocol");
+            legacy.Inject(Protocol.Frame("@ERROR,2,COMMAND"));
+            Check(legacy.Last.StartsWith("@GET,3,"),"legacy negotiation falls back to GET");
+            legacy.Inject(State(3,1,InitialBoard(),1,0,2,2));
             host.Move(2,3);
-            Check(legacy.Last.StartsWith("@MOVE,3,"),"legacy host move format preserved");
+            Check(legacy.Last.StartsWith("@MOVE,4,"),"legacy host move format preserved");
         }
         using(var host=new HostSession()) {
             host.Connect(new SimulatedTransport());
             Check(host.State.Match.Mode==GameMode.Casual,"advanced default boot game");
             host.Control(GameControl.Mode,GameMode.Challenge,180);
-            Check(host.State.Match.Mode==GameMode.Challenge && host.State.Match.Total==0,"challenge mode confirmed");
+            Check(host.State.ComputerOpponent && host.State.Match.Total==0,"human-versus-computer challenge confirmed");
             host.Control(GameControl.Edit);
             host.Edit(2,3,1);
             Check(host.State.Match.Edited && host.State.Black==3 && host.State.Cells[19]=='1',"edit changes confirmed cell and counts");
@@ -126,6 +136,12 @@ class BasicTests {
                         } else {
                             for(int moves=0;host.State.Status==0 && moves<60;moves++) {
                                 uint revision=host.State.Revision;
+                                if(host.State.ComputerTurn) {
+                                    Thread.Sleep(275);
+                                    host.Refresh();
+                                    if(host.State.Revision==revision) throw new Exception("Computer did not answer the black move");
+                                    continue;
+                                }
                                 for(int i=0;i<64 && host.State.Revision==revision;i++) {
                                     int square=(i+trial*7)%64;
                                     host.Move(square/8,square%8);

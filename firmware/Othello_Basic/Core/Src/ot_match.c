@@ -15,6 +15,7 @@ static void new_round(OtMatch *m)
     m->phase = m->before_edit = OT_RUNNING;
     m->result = OT_RESULT_NONE;
     m->edited = 0u;
+    m->computer_wait_ms = 0u;
     m->elapsed_ms = 0u;
     m->remaining_ms = m->mode == OT_TIMED ? (uint32_t)m->limit_seconds * 1000u : 0u;
 }
@@ -43,6 +44,44 @@ static void finish(OtMatch *m, OtResult reason)
     else if (m->losses == 2u) m->result = OT_RESULT_OVER;
 }
 
+uint8_t ot_match_computer_turn(const OtMatch *m)
+{
+    return (uint8_t)(m->mode == OT_CHALLENGE && m->phase == OT_RUNNING && m->game.turn == OT_WHITE);
+}
+
+static uint8_t apply_move(OtMatch *m, uint8_t row, uint8_t col)
+{
+    if (!ot_move(&m->game, row, col)) return 0u;
+    if (m->game.revision == 0u) m->game.revision = 1u;
+    if (m->game.status == OT_OVER) finish(m, OT_RESULT_BOARD);
+    m->computer_wait_ms = ot_match_computer_turn(m) ? OT_COMPUTER_DELAY_MS : 0u;
+    return 1u;
+}
+
+static uint8_t play_computer_move(OtMatch *m)
+{
+    OtGame candidate;
+    unsigned square, best = 64u, best_white = 0u;
+    for (square = 0u; square < 64u; ++square) {
+        uint8_t row = (uint8_t)(square / 8u), col = (uint8_t)(square % 8u);
+        if (!ot_legal(&m->game, row, col, OT_WHITE)) continue;
+        if ((row == 0u || row == 7u) && (col == 0u || col == 7u))
+            return apply_move(m, row, col);
+
+        candidate = m->game;
+        (void)ot_move(&candidate, row, col);
+        if (candidate.white > best_white) {
+            best = square;
+            best_white = candidate.white;
+        }
+    }
+    if (best < 64u) return apply_move(m, (uint8_t)(best / 8u), (uint8_t)(best % 8u));
+
+    m->game.revision = next_revision(m->game.revision);
+    finish(m, OT_RESULT_BOARD);
+    return 1u;
+}
+
 uint8_t ot_match_tick(OtMatch *m, uint32_t now)
 {
     uint32_t delta = m->clock_seen ? now - m->clock_ms : 0u;
@@ -59,15 +98,17 @@ uint8_t ot_match_tick(OtMatch *m, uint32_t now)
     if (m->mode == OT_TIMED) m->remaining_ms -= delta;
     if (m->elapsed_ms <= UINT32_MAX - delta) m->elapsed_ms += delta;
     else m->elapsed_ms = UINT32_MAX;
+    if (ot_match_computer_turn(m)) {
+        if (delta >= m->computer_wait_ms) return play_computer_move(m);
+        m->computer_wait_ms -= (uint16_t)delta;
+    }
     return 0u;
 }
 
 uint8_t ot_match_move(OtMatch *m, uint8_t row, uint8_t col)
 {
-    if (m->phase != OT_RUNNING || !ot_move(&m->game, row, col)) return 0u;
-    if (m->game.revision == 0u) m->game.revision = 1u;
-    if (m->game.status == OT_OVER) finish(m, OT_RESULT_BOARD);
-    return 1u;
+    if (m->phase != OT_RUNNING || ot_match_computer_turn(m)) return 0u;
+    return apply_move(m, row, col);
 }
 
 uint8_t ot_match_control(OtMatch *m, OtControl action, uint32_t value, uint32_t seconds)

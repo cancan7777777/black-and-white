@@ -1,4 +1,4 @@
-LIBRARY OthelloSimulator
+LIBRARY OthelloSimulatorV2
 EXPORTS
     sim_create
     sim_destroy
