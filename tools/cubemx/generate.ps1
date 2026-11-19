@@ -77,6 +77,8 @@ try {
     })
     # Preserve CubeMX's native XML formatting for the installed uVision parser.
     [IO.File]::WriteAllText($mdkProjectPath, $mdkText, [Text.UTF8Encoding]::new($false))
+    & (Join-Path $PSScriptRoot '../update-app-sources.ps1')
+    $mdkText = [IO.File]::ReadAllText($mdkProjectPath)
     [xml]$mdkProject = $mdkText
     foreach ($sourcePathNode in @($mdkProject.SelectNodes('//FilePath'))) {
         $sourcePath = $sourcePathNode.InnerText

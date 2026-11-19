@@ -1,6 +1,6 @@
 # Othello_Basic：STM32CubeMX 基础工程
 
-状态：基础配置已创建并经本机 Keil 编译通过（2026-11-18），尚未完成可运行游戏。
+状态：2026-11-18 按用户要求接入基础 main.c、应用调度与必要驱动模块；仍未进行真实硬件验收。
 
 本工程对应 GitHub [#20](https://github.com/cancan7777777/black-and-white/issues/20)，任务分支 `task/20-basic-audit-cubemx`。
 
@@ -68,6 +68,6 @@
 
 ## 尚未实现
 
-`main` 当前只初始化外设，循环为空；不自动启动 PWM/DMA 发送，不启动 UART 接收，也没有矩阵扫描。输入目录的 `othello.*`、`ot_protocol.*` 原样保存，但尚未加入并调用本 HAL 应用。
+`main` 已接入 AppBasic/AppPlatform，处理基本键盘、UART 协议与异步点阵刷新；输入目录的规则/协议核心已原样加入工程。此更新不等于接线、波形或实机功能已经验收。
 
-后续必须完成 LED 编码/发送/复位/映射、矩阵扫描/消抖/坐标选择、UART 缓冲/协议/状态上传与主循环集成，以及实际 LabVIEW VI。完整缺项见 [基础功能审查报告](../../docs/reviews/2026-11-18-basic-function-audit.md)，原 #5–#10 保持未完成。未开展真实硬件测试、串口联调或功能验收。
+本次已补入上述运行代码，后续仍须核实点阵映射/时序/供电、键盘排针，完成实际 LabVIEW 与板卡联调。历史[基础功能审查报告](../../docs/reviews/2026-11-18-basic-function-audit.md)为更新前基线；本次实现、扩展接口和已知重生成限制见 [#22 对应代码说明](https://github.com/cancan7777777/black-and-white/blob/task/22-basic-main/firmware/Othello_Basic/BASIC_MAIN.md)。原 #5–#10 不据此视为实物验收完成。
