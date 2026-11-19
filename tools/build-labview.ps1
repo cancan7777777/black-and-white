@@ -16,7 +16,7 @@ $csc=Join-Path $env:WINDIR 'Microsoft.NET/Framework/v4.0.30319/csc.exe'
 $hostSources=@('Protocol.cs','Transport.cs','HostSession.cs','OthelloPanel.cs') | ForEach-Object { (Resolve-Path -LiteralPath (Join-Path $project ('src\'+$_))).Path }
 & $csc /nologo /target:library /platform:x86 ("/out:"+(Join-Path $bin 'Othello.Basic.dll')) /r:System.Windows.Forms.dll /r:System.Drawing.dll @hostSources
 if($LASTEXITCODE -ne 0){throw 'LabVIEW embedded control build failed'}
-& $csc /nologo /platform:x86 ("/out:"+(Join-Path $bin 'BasicTests.exe')) ("/r:"+(Join-Path $bin 'Othello.Basic.dll')) (Join-Path $project 'tests\BasicTests.cs')
+& $csc /nologo /platform:x86 /r:System.Windows.Forms.dll ("/out:"+(Join-Path $bin 'BasicTests.exe')) ("/r:"+(Join-Path $bin 'Othello.Basic.dll')) (Join-Path $project 'tests\BasicTests.cs')
 if($LASTEXITCODE -ne 0){throw 'Host tests build failed'}
 & "$bin/BasicTests.exe"
 if($LASTEXITCODE -ne 0){throw 'Host tests failed'}

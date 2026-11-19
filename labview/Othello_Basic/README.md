@@ -16,12 +16,16 @@
 |---|---|
 | `bin/Othello.Basic.dll` | LabVIEW .NET 容器绑定的程序集 |
 | `bin/OthelloSimulator.dll` | 离线模拟下位机 |
-| `bin/BasicTests.exe` | 在无板卡条件下测试协议和模拟对局 |
+| `bin/BasicTests.exe` | 在无板卡条件下测试协议、模拟对局和面板按钮 |
 
 ## 操作与验收
 
-绑定时，在 LabVIEW 前面板的 .NET 容器中插入 `bin/Othello.Basic.dll` 里的 `Othello.Basic.OthelloPanel`。运行框图应先调用控件的 `Start()`，然后定时读取 `Stopped` 作为循环退出条件。面板的“结束上位机”按钮断开会话并设置退出状态。绑定与连线待在当前安装环境验证。 [NI 前面板 .NET 控件说明](https://www.ni.com/docs/en-US/bundle/labview/page/creating-net-controls-in-a-net-container.html)
+绑定时，在 LabVIEW 前面板的 .NET 容器中插入 `bin/Othello.Basic.dll` 里的 `Othello.Basic.OthelloPanel`。绑定与连线待在当前安装环境验证。[NI 前面板 .NET 控件说明](https://www.ni.com/docs/en-US/bundle/labview/page/creating-net-controls-in-a-net-container.html)
 
-- 离线模拟下选择“连接”，开局应显示黑白各两子。从默认开局选第 3 行第 4 列并确认，预期黑 4、白 1，轮到白方。非法落子后棋盘应保持原状。
+1. 在框图中将 .NET 容器端子接到循环外的调用节点，选择 `Start()`。
+2. 将控件引用和 `Start()` 的错误输出接进 While 循环。每轮等待 100 ms，并通过属性节点读取 `Stopped`。`Stopped` 或错误状态为真时退出。
+3. 运行 VI 后点“离线模拟”旁的“连接”。操作完成后点“结束上位机”，按钮会断开会话并设置退出状态。
+
+- 离线开局应显示黑白各两子。从默认开局选第 3 行第 4 列并确认，预期黑 4、白 1，轮到白方。非法落子后棋盘应保持原状。
 - 实机模式填写串口参数并连接。默认值是 `115200 8N1`。棋盘通过 `GET` 同步，点击格子只选择坐标，确认后由 `MOVE` 请求落子，收到有效 `STATE` 才更新棋盘。
 - 真实 USB-UART 连接、键盘输入与实体点阵的双端一致性由之后的实机联调验证。

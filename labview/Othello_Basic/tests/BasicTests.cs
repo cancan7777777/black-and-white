@@ -1,5 +1,8 @@
 using System;
+using System.Diagnostics;
 using System.IO.Ports;
+using System.Threading;
+using System.Windows.Forms;
 using Othello.Basic;
 
 class FakeTransport : ITransport {
@@ -18,6 +21,45 @@ class BasicTests {
     static void Reject(Action action,string description) { bool threw=false;try{action();}catch(ArgumentException){threw=true;}catch(FormatException){threw=true;}Check(threw,description); }
     static string InitialBoard() { char[] b=new string('0',64).ToCharArray();b[27]='2';b[28]='1';b[35]='1';b[36]='2';return new string(b); }
     static string State(uint seq,uint rev,string cells,int turn,int status,int black,int white) { return Protocol.Frame("@STATE,"+seq+","+rev+","+turn+","+status+","+black+","+white+","+cells); }
+    static T FindControl<T>(Control parent, Predicate<T> match) where T : Control {
+        foreach (Control child in parent.Controls) {
+            T typed = child as T;
+            if (typed != null && match(typed)) return typed;
+            T nested = FindControl(child, match);
+            if (nested != null) return nested;
+        }
+        return null;
+    }
+    static void WaitForPanel(Func<bool> predicate, string description) {
+        var elapsed = Stopwatch.StartNew();
+        while (!predicate() && elapsed.ElapsedMilliseconds < 3000) {
+            Application.DoEvents();
+            Thread.Sleep(5);
+        }
+        Check(predicate(), description);
+    }
+    static void CheckPanel() {
+        using (var panel = new OthelloPanel()) {
+            panel.CreateControl();
+            var connect = FindControl<Button>(panel, button => button.Text == "连接");
+            var move = FindControl<Button>(panel, button => button.Text == "确认落子");
+            var finish = FindControl<Button>(panel, button => button.Text == "结束上位机");
+            var board = FindControl<BoardView>(panel, control => true);
+            Check(panel.IsHandleCreated && board != null && connect != null && move != null && finish != null,
+                "embedded control instantiates the board and actions");
+            Check(panel.Stopped && !connect.Enabled && !move.Enabled, "controls are disabled until VI calls Start");
+            panel.Start();
+            connect.PerformClick();
+            WaitForPanel(() => board.Board != null && move.Enabled, "panel connect displays a confirmed simulated board");
+            Check(board.Board.Cells == InitialBoard(), "panel renders the initial game state");
+            move.PerformClick();
+            WaitForPanel(() => board.Board.Revision == 2, "panel move displays a confirmed change");
+            Check(board.Board.Black == 4 && board.Board.White == 1, "panel refresh shows the flipped counts");
+            finish.PerformClick();
+            Check(panel.Stopped && board.Board == null && !move.Enabled, "panel finish stops and clears the session");
+        }
+    }
+    [STAThread]
     static int Main() {
         try {
             Check(Protocol.Crc("123456789")==0x29B1,"independent CCITT-FALSE vector");
@@ -56,7 +98,8 @@ class BasicTests {
             }
             Reject(delegate { new SerialSettings { DataBits=9 }.Validate(); },"invalid data bits");
             Reject(delegate { new SerialSettings { DataBits=8,StopBits=StopBits.OnePointFive }.Validate(); },"invalid 1.5 stop bits combination");
-            Console.WriteLine("PASS "+checks+" checks: CRC, framing, malformed/stale state, native simulator, complete game, reconnect, serial settings");
+            CheckPanel();
+            Console.WriteLine("PASS "+checks+" checks: CRC, framing, malformed/stale state, native simulator, complete game, reconnect, serial settings, panel actions");
             return 0;
         } catch(Exception error) { Console.Error.WriteLine(error);return 1; }
     }
