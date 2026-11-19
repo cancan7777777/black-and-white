@@ -40,7 +40,7 @@ Project Manager：Project Name `Othello_Basic`，Toolchain/IDE 选实际安装�
 本包提供的核心模块与 STM32 HAL 解耦，已用 PC GCC 进行单元测试。下一步确认硬件后才编写/启用 LED PWM DMA、矩阵扫描、UART HAL 接收和 main.c 整合。当前不提供声称可以直接烧录的 HEX 或 .ioc 文件。
 
 ## 7. 联调顺序
-先编译并测试烧录 Blink（暂不接 LED）→ 验证 UART GET/STATE → 单独测试键盘 → 单独测试点阵像素映射及低亮度颜色 → 整合游戏 → LabVIEW 双向落子。点阵 V+ 应使用确认规格的独立稳压 5V 电源，所有信号端共地；避免从 USB-TTL、STM32 3.3V 或面包板电源轨直接承担整板负载。建议 74AHCT125 等电平转换器及数据线串联电阻，实际 LED 供电与电平需确认。不得凭照片猜测第三脚后直接通电。
+先编译并测试烧录 Blink（暂不接 LED）→ 验证 UART GET/STATE → 单独测试键盘 → 单独测试点阵像素映射及低亮度颜色 → 整合游戏 → LabVIEW 双向落子。点阵 V+ 应使用确认规格的独立稳压 5V 电源，所有信号端共地；避免从 USB-TTL、STM32 3.3V 或面包板电源轨直接承担整板负载。数据线保留串联电阻，按实际模块规格确认供电和 DIN 输入电平。不得凭照片猜测第三脚后直接通电。
 
 ## 8. 参考资料
 - ST RM0008: https://www.st.com/resource/en/reference_manual/rm0008-stm32f101xx-stm32f102xx-stm32f103xx-stm32f105xx-and-stm32f107xx-advanced-armbased-32bit-mcus-stmicroelectronics.pdf

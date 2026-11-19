@@ -1,0 +1,5 @@
+LIBRARY OthelloSimulator
+EXPORTS
+    sim_create
+    sim_destroy
+    sim_exchange

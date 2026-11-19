@@ -46,3 +46,9 @@ mx.scratch
 *.lnp
 *.lst
 *.htm
+
+# LabVIEW x86 components and test executable built locally
+/labview/Othello_Basic/bin/
+*.lvproj.bak
+*.aliases
+*.lvlps
