@@ -66,7 +66,8 @@ class BasicTests {
             var modes=FindControl<ComboBox>(panel, control=>control.Items.Contains("闯关"));
             var apply=FindControl<Button>(panel, button=>button.Text=="设定模式");
             modes.SelectedIndex=1; apply.PerformClick();
-            WaitForPanel(()=>board.Board.ComputerOpponent && move.Enabled,"challenge panel confirms the computer opponent");
+            WaitForPanel(()=>board.Board.ComputerOpponent && board.Board.Match.Stage==1 && board.Board.Match.Score==1m && move.Enabled,
+                "challenge panel starts at stage one with the half-point coefficient");
             move.PerformClick();
             WaitForPanel(()=>board.Board.ComputerTurn && !move.Enabled,"panel waits for the computer after the black move");
             WaitForPanel(()=>board.Board.Turn==1 && board.Board.Black==3 && board.Board.White==3 && move.Enabled,
@@ -80,26 +81,30 @@ class BasicTests {
         using(var host=new HostSession()) {
             var legacy=new FakeTransport();
             host.Connect(legacy);
-            Check(legacy.Last.StartsWith("@SYNC2,1,"),"new host probes computer opponent");
+            Check(legacy.Last.StartsWith("@SYNC3,1,"),"new host probes staged scoring");
             legacy.Inject(Protocol.Frame("@ERROR,1,COMMAND"));
-            Check(legacy.Last.StartsWith("@SYNC,2,"),"computer negotiation falls back to previous extended protocol");
+            Check(legacy.Last.StartsWith("@SYNC2,2,"),"stage negotiation falls back to computer opponent");
             legacy.Inject(Protocol.Frame("@ERROR,2,COMMAND"));
-            Check(legacy.Last.StartsWith("@GET,3,"),"legacy negotiation falls back to GET");
-            legacy.Inject(State(3,1,InitialBoard(),1,0,2,2));
+            Check(legacy.Last.StartsWith("@SYNC,3,"),"computer negotiation falls back to previous extended protocol");
+            legacy.Inject(Protocol.Frame("@ERROR,3,COMMAND"));
+            Check(legacy.Last.StartsWith("@GET,4,"),"legacy negotiation falls back to GET");
+            legacy.Inject(State(4,1,InitialBoard(),1,0,2,2));
             host.Move(2,3);
-            Check(legacy.Last.StartsWith("@MOVE,4,"),"legacy host move format preserved");
+            Check(legacy.Last.StartsWith("@MOVE,5,"),"legacy host move format preserved");
         }
         using(var host=new HostSession()) {
             host.Connect(new SimulatedTransport());
             Check(host.State.Match.Mode==GameMode.Casual,"advanced default boot game");
             host.Control(GameControl.Mode,GameMode.Challenge,180);
-            Check(host.State.ComputerOpponent && host.State.Match.Total==0,"human-versus-computer challenge confirmed");
+            Check(host.State.ComputerOpponent && host.State.Match.Stage==1 && host.State.Match.TotalScore==0m,
+                "human-versus-computer challenge confirmed");
             host.Control(GameControl.Edit);
             host.Edit(2,3,1);
             Check(host.State.Match.Edited && host.State.Black==3 && host.State.Cells[19]=='1',"edit changes confirmed cell and counts");
             host.Control(GameControl.Edit);
             host.Control(GameControl.End);
-            Check(host.State.Match.Result==GameResult.Exit && host.State.Match.Total==0,"early exit does not score");
+            Check(host.State.Match.Result==GameResult.Exit && host.State.Match.Score==0m && host.State.Match.TotalScore==0m,
+                "early exit does not score");
             host.Control(GameControl.Start);
             Check(host.State.Cells==InitialBoard() && !host.State.Match.Edited,"start initializes a fresh round");
             host.Control(GameControl.Mode,GameMode.Timed,1);
@@ -171,6 +176,26 @@ class BasicTests {
                 Check(File.ReadAllLines(export).Length==6,"rank export contains header and five records");
                 File.Delete(export);
             }
+            var stagedArchive=new GameArchive(folder);
+            var opening=Protocol.ParseState(Protocol.Fields(Protocol.Frame("@GAME3,1,1,1,0,2,2,"+InitialBoard()+",1,0,91,142,0,0,0,0,0,180,3,6,0")));
+            string finishPayload="@GAME3,0,2,0,1,31,0,"+new string('1',31)+new string('0',33)+",1,3,91,188,0,0,430,0,4,180,3,93,1";
+            var settled=Protocol.ParseState(Protocol.Fields(Protocol.Frame(finishPayload)));
+            Check(settled.Match.Stage==3 && settled.Match.Score==46.5m && settled.Match.TotalScore==188.5m,
+                "staged wire protocol preserves fractional scores exactly");
+            Reject(()=>Protocol.ParseState(Protocol.Fields(Protocol.Frame(finishPayload.Replace(",3,93,1",",3,94,1")))),
+                "staged wire protocol rejects wrong coefficient scores");
+            stagedArchive.Observe(opening,true); stagedArchive.Observe(settled,true);
+            string legacyPath=Path.Combine(folder,"legacy.xml");
+            File.WriteAllText(legacyPath,"<GameRecord><Id>legacy</Id><Mode>Challenge</Mode><Score>25</Score><Total>100</Total>"+
+                "<Frames><ReplayFrame><Cells>"+InitialBoard()+"</Cells></ReplayFrame></Frames></GameRecord>");
+            var loaded=stagedArchive.Load(out unreadable);
+            var fractional=loaded.Find(record=>record.Stage==3);
+            var legacyRecord=loaded.Find(record=>record.Id=="legacy");
+            Check(unreadable==0 && fractional!=null && fractional.Score==46.5m && fractional.Total==188.5m &&
+                legacyRecord!=null && legacyRecord.Score==25m && legacyRecord.Total==100m,"archive preserves new fractions and reads old integer records");
+            string fractionalCsv=Path.Combine(folder,"fractional.csv");
+            GameArchive.Export(fractionalCsv,new[]{fractional});
+            Check(File.ReadAllLines(fractionalCsv)[1].Contains(",46.5,188.5,"),"CSV preserves both half-point values");
         } finally {
             if(Directory.Exists(folder)) {
                 foreach(string file in Directory.GetFiles(folder)) File.Delete(file);

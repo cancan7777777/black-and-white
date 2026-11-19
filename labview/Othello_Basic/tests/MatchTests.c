@@ -16,10 +16,9 @@ static void check(int condition, const char *description)
 static void forced_finish(OtMatch *match, uint8_t side)
 {
     memset(match->game.board, 0, sizeof(match->game.board));
-    match->game.board[0] = match->game.board[4] = side;
+    match->game.board[0] = side;
     match->game.board[1] = (uint8_t)(3u - side);
-    match->game.black = side == OT_BLACK ? 2u : 1u;
-    match->game.white = side == OT_WHITE ? 2u : 1u;
+    match->game.black = match->game.white = 1u;
     match->game.turn = side;
     if (ot_match_computer_turn(match)) {
         check(ot_match_tick(match, match->clock_ms + OT_COMPUTER_DELAY_MS), "computer finishes a forced white turn");
@@ -27,8 +26,6 @@ static void forced_finish(OtMatch *match, uint8_t side)
         check(ot_match_move(match, 0u, 2u), "forced terminal move must be legal");
     }
 }
-
-static uint32_t random_seed=1u;
 
 static void play_seed(OtMatch *match, uint32_t seed)
 {
@@ -53,36 +50,29 @@ static void play_seed(OtMatch *match, uint32_t seed)
 static void prove_natural_win(void)
 {
     OtMatch match;
-    uint32_t seed_for_score[65]={0}, used[OT_WIN_SCORE+1u]={0};
-    unsigned i, score, previous[OT_WIN_SCORE+1u]={0};
-    for (i=0; i<512u; ++i) {
-        ++random_seed;
+    uint32_t seed;
+    unsigned stage;
+    for (seed=2u; seed<=512u; ++seed) {
         ot_match_init(&match);
         check(ot_match_control(&match,OT_SET_MODE,OT_CHALLENGE,180u),"select human versus computer");
-        play_seed(&match,random_seed);
-        if (match.game.black>=match.game.white && !seed_for_score[match.game.black])
-            seed_for_score[match.game.black]=random_seed;
+        play_seed(&match,seed);
+        if (match.game.black>=match.game.white && match.game.black>=38u) break;
     }
-    for (i=0; i<OT_WIN_SCORE; ++i) {
-        if (i && !used[i]) continue;
-        for (score=1u; score<=64u && score<=OT_WIN_SCORE-i; ++score) {
-            if (seed_for_score[score] && !used[i+score]) {
-                used[i+score]=seed_for_score[score];
-                previous[i+score]=i;
-            }
-        }
-    }
-    check(used[OT_WIN_SCORE]!=0u,"188 is reachable with legal non-losing games");
+    check(seed<=512u,"a legal non-losing game can produce enough points across four stages");
     ot_match_init(&match);
     check(ot_match_control(&match,OT_SET_MODE,OT_CHALLENGE,180u),"natural proof selects challenge");
-    printf("Legal round scores against the computer reaching 188:");
-    for (i=OT_WIN_SCORE; i; i=previous[i]) {
-        play_seed(&match,used[i]);
-        printf(" %u",(unsigned)match.game.black);
-        if (previous[i]) check(ot_match_control(&match,OT_START,0u,0u),"continue challenge");
+    printf("Legal stage scores against the computer:");
+    for (stage=1u; stage<=OT_CHALLENGE_STAGES; ++stage) {
+        unsigned score;
+        play_seed(&match,seed);
+        score=ot_match_score_half(&match);
+        printf(" %u%s",score/2u,score%2u?".5":"");
+        if (match.result==OT_RESULT_WIN) break;
+        check(match.result==OT_RESULT_BOARD && stage<OT_CHALLENGE_STAGES &&
+            ot_match_control(&match,OT_START,0u,0u),"continue challenge");
     }
-    printf("\n");
-    check(match.total==OT_WIN_SCORE && match.result==OT_RESULT_WIN,"legal rounds produce WIN");
+    printf(" -> %lu%s\n",(unsigned long)match.total,match.total_half_point?".5":"");
+    check(match.total>=OT_WIN_SCORE && match.result==OT_RESULT_WIN,"legal stages produce WIN within four rounds");
 }
 
 static char latest_frame[OT_LINE_MAX];
@@ -100,19 +90,20 @@ static uint8_t capture_frame(const char *data, size_t length, void *context)
 
 static void exercise_hardware_path(void)
 {
-    const char request[] = "@SYNC2,1";
+    const char request[] = "@SYNC3,1";
     char command[32];
     AppBasicSnapshot snapshot;
     AppBasicPorts ports = { always_ready, capture_frame, NULL, NULL };
     AppBasic_Init(&ports);
     AppBasic_Tick(0u);
     snprintf(command,sizeof(command),"%s,%04X\n",request,(unsigned)ot_crc(request,strlen(request)));
-    check(AppBasic_ProcessFrame(command) && !strncmp(latest_frame,"@GAME2,1,",9u),"host can negotiate the computer opponent");
+    check(AppBasic_ProcessFrame(command) && !strncmp(latest_frame,"@GAME3,1,",9u),"host can negotiate staged scoring");
     AppBasic_HandleKey('D');
     AppBasic_HandleKey('5');
     AppBasic_Tick(10u);
     AppBasic_GetSnapshot(&snapshot);
-    check(snapshot.game.turn==OT_WHITE && !strncmp(latest_frame,"@GAME,0,3,2,",12u),"keypad black move is published first");
+    check(snapshot.game.turn==OT_WHITE && !strncmp(latest_frame,"@GAME3,0,3,2,",13u) &&
+        strstr(latest_frame,",180,1,4,0,")!=NULL,"keypad black move publishes the current stage and score");
     AppBasic_HandleKey('5');
     AppBasic_HandleKey('B');
     AppBasic_Tick(1000u);
@@ -122,7 +113,47 @@ static void exercise_hardware_path(void)
     AppBasic_Tick(1240u);
     AppBasic_GetSnapshot(&snapshot);
     check(snapshot.game.revision==6u && snapshot.game.turn==OT_BLACK && snapshot.game.black==3u && snapshot.game.white==3u &&
-        !strncmp(latest_frame,"@GAME,0,6,1,",12u),"after resume, computer plays white and publishes the board without a host move");
+        !strncmp(latest_frame,"@GAME3,0,6,1,",13u),"after resume, computer plays white and publishes the board without a host move");
+}
+
+static void test_stage_scoring(void)
+{
+    OtMatch m;
+    unsigned stage, accumulated_half=0u;
+    ot_match_init(&m);
+    check(ot_match_control(&m,OT_SET_MODE,OT_CHALLENGE,180u),"challenge configured");
+    for (stage=1u; stage<=OT_CHALLENGE_STAGES; ++stage) {
+        check(m.stage==stage,"challenge advances one stage");
+        check(ot_match_control(&m,OT_RESTART,0u,0u) && m.stage==stage,"restarting an ongoing stage keeps its coefficient");
+        forced_finish(&m,OT_BLACK);
+        accumulated_half+=3u*stage;
+        check(ot_match_score_half(&m)==3u*stage && m.total*2u+m.total_half_point==accumulated_half,
+            "three remaining stones score 1.5, 3, 4.5 and 6 across stages");
+        if (stage<OT_CHALLENGE_STAGES) {
+            check(m.result==OT_RESULT_BOARD,"a settled stage below the threshold permits the next stage");
+            check(ot_match_control(&m,stage==2u?OT_RESTART:OT_START,0u,0u) &&
+                m.total*2u+m.total_half_point==accumulated_half,"settled stages advance without duplicate scoring");
+        }
+    }
+    check(m.result==OT_RESULT_OVER && m.losses==0,"four stages below target end the challenge");
+    check(ot_match_control(&m,OT_START,0u,0u) && m.stage==1u && m.total==0u && m.total_half_point==0u,
+        "starting a new challenge clears points and returns to stage one");
+    m.edited=1u;
+    forced_finish(&m,OT_BLACK);
+    check(ot_match_score_half(&m)==0u && m.total==0u,"an edited stage scores no points");
+    check(ot_match_control(&m,OT_START,0u,0u) && m.stage==1u,"an edited stage can be replayed");
+
+    m.total=186u;
+    forced_finish(&m,OT_BLACK);
+    check(m.total==187u && m.total_half_point==1u && m.result==OT_RESULT_BOARD,"187.5 does not win");
+    check(ot_match_control(&m,OT_SET_MODE,OT_CHALLENGE,180u),"reset for exact threshold");
+    m.total=186u; m.total_half_point=1u;
+    forced_finish(&m,OT_BLACK);
+    check(m.total==188u && m.total_half_point==0u && m.result==OT_RESULT_WIN,"exactly 188 wins");
+    check(ot_match_control(&m,OT_START,0u,0u) && m.total==0u,"restart won session with zero score");
+    m.total=187u;
+    forced_finish(&m,OT_BLACK);
+    check(m.total==188u && m.total_half_point==1u && m.result==OT_RESULT_WIN,"188.5 also wins");
 }
 
 int main(void)
@@ -130,14 +161,6 @@ int main(void)
     OtMatch m;
     ot_match_init(&m);
     check(ot_match_control(&m,OT_SET_MODE,OT_CHALLENGE,180u),"challenge configured");
-    m.total=OT_WIN_SCORE-4u;
-    forced_finish(&m,OT_BLACK);
-    check(m.total==188u && m.result==OT_RESULT_WIN,"exactly 188 wins");
-    check(ot_match_control(&m,OT_START,0u,0u)&&m.total==0,"restart won session with zero score");
-    m.total=OT_WIN_SCORE-3u;
-    forced_finish(&m,OT_BLACK);
-    check(m.total==189u && m.result==OT_RESULT_BOARD,"greater than 188 does not win");
-    check(ot_match_control(&m,OT_START,0u,0u),"next challenge round");
     forced_finish(&m,OT_WHITE);
     check(m.losses==1 && m.result==OT_RESULT_BOARD,"first loss remains playable");
     check(ot_match_control(&m,OT_START,0u,0u),"start after first loss");
@@ -148,6 +171,7 @@ int main(void)
     ot_match_tick(&m,UINT32_MAX-500u);
     check(!ot_match_tick(&m,498u) && m.remaining_ms==1u,"timer survives tick wrap and leaves one ms");
     check(ot_match_tick(&m,499u) && m.total==2u && !ot_match_move(&m,2u,3u),"exact deadline rejects a late move");
+    test_stage_scoring();
     exercise_hardware_path();
     prove_natural_win();
     puts("PASS native match boundaries");

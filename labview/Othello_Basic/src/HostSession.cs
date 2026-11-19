@@ -12,7 +12,7 @@ namespace Othello.Basic {
         DateTime nextPoll;
         int generation;
         string syncCommand;
-        bool pendingRefresh, computerSupported;
+        bool pendingRefresh, computerSupported, stagesSupported;
         public BoardState State { get; private set; }
         public bool Connected { get { return transport!=null; } }
         public bool Waiting { get { return pending!=0; } }
@@ -38,7 +38,7 @@ namespace Othello.Basic {
                 transport=device;
                 device.Received+=delegate(string chunk) { Dispatch(delegate { if(session==generation && transport==device) lines.Feed(chunk); }); };
                 device.Failed+=delegate(string error) { Dispatch(delegate { if(session==generation) Report(error); }); };
-                State=null; pending=0; pendingRefresh=false; computerSupported=false; syncCommand="@SYNC2";
+                State=null; pending=0; pendingRefresh=false; computerSupported=stagesSupported=false; syncCommand="@SYNC3";
                 nextPoll=DateTime.UtcNow; lines.Clear();
                 Report("已连接，正在读取完整棋盘"); Refresh();
             } catch { device.Dispose(); transport=null; throw; }
@@ -98,16 +98,17 @@ namespace Othello.Basic {
             AddLog("RX "+line.TrimEnd());
             try {
                 string[] fields=Protocol.Fields(line);
-                if(fields[0]=="@GAME2" || fields[0]=="@GAME" || fields[0]=="@STATE") {
+                if(fields[0]=="@GAME3" || fields[0]=="@GAME2" || fields[0]=="@GAME" || fields[0]=="@STATE") {
                     BoardState state=Protocol.ParseState(fields);
                     if(state.Sequence!=0 && state.Sequence!=pending) { Report("忽略不属于当前请求的 STATE"); return; }
                     if(State!=null && state.Revision<State.Revision) { Report("忽略过期棋盘版本；重连后重新同步"); return; }
                     if(state.Match==null && State!=null && State.Match!=null) return;
+                    if(fields[0]=="@GAME3") stagesSupported=computerSupported=true;
                     if(fields[0]=="@GAME2") computerSupported=true;
                     state.ComputerOpponent=computerSupported && state.Match!=null && state.Match.Mode==GameMode.Challenge;
                     State=state;
                     if(state.Sequence!=0 && state.Sequence==pending) {
-                        if(pendingRefresh) syncCommand=computerSupported?"@SYNC2":state.Match!=null?"@SYNC":"@GET";
+                        if(pendingRefresh) syncCommand=stagesSupported?"@SYNC3":computerSupported?"@SYNC2":state.Match!=null?"@SYNC":"@GET";
                         pending=0;
                     }
                     Message=Describe(state);
@@ -119,7 +120,7 @@ namespace Othello.Basic {
                     if(seq==0 && pending!=0) { Report("下位机报告无序号错误："+reason); return; }
                     if(seq!=0 && pendingRefresh && reason=="COMMAND" && syncCommand!="@GET") {
                         pending=0;
-                        syncCommand=syncCommand=="@SYNC2" ? "@SYNC" : "@GET";
+                        syncCommand=syncCommand=="@SYNC3" ? "@SYNC2" : syncCommand=="@SYNC2" ? "@SYNC" : "@GET";
                         Refresh();
                         return;
                     }
@@ -133,8 +134,8 @@ namespace Othello.Basic {
         static string Describe(BoardState state) {
             if(state.Match!=null) {
                 switch(state.Match.Result) {
-                    case GameResult.Win: return "WIN · 闯关总分恰好 188 分";
-                    case GameResult.Over: return "OVER · 连续输 2 局";
+                    case GameResult.Win: return "WIN · 闯关总分已达到 188 分";
+                    case GameResult.Over: return state.Match.Losses==2 ? "OVER · 连续输 2 局" : "OVER · 四关结束，总分未达 188 分";
                     case GameResult.Time: return "计时结束，已结算";
                     case GameResult.Exit: return "已结束退出，本局不计分";
                 }

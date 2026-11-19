@@ -27,21 +27,43 @@ void ot_match_init(OtMatch *m)
     new_round(m);
 }
 
+static void clear_scores(OtMatch *m)
+{
+    m->total = 0u;
+    m->total_half_point = 0u;
+    m->losses = 0u;
+    m->stage = m->mode == OT_CHALLENGE ? 1u : 0u;
+}
+
+unsigned ot_match_score_half(const OtMatch *m)
+{
+    unsigned multiplier = m->mode == OT_CHALLENGE ? m->stage : 2u;
+    if (m->phase == OT_FINISHED && (m->edited || m->result == OT_RESULT_EXIT)) return 0u;
+    return m->game.black * multiplier;
+}
+
 static void finish(OtMatch *m, OtResult reason)
 {
+    unsigned score_half;
     m->phase = OT_FINISHED;
     m->result = reason;
     m->game.status = OT_OVER;
     m->game.turn = 0u;
     if (reason == OT_RESULT_EXIT || m->edited) return;
 
-    if (m->total <= UINT32_MAX - m->game.black) m->total += m->game.black;
-    else m->total = UINT32_MAX;
+    score_half = m->total_half_point + ot_match_score_half(m);
+    if (m->total <= UINT32_MAX - score_half / 2u) {
+        m->total += score_half / 2u;
+        m->total_half_point = (uint8_t)(score_half % 2u);
+    } else {
+        m->total = UINT32_MAX;
+        m->total_half_point = 0u;
+    }
     if (m->mode != OT_CHALLENGE) return;
 
     m->losses = m->game.black < m->game.white ? (uint8_t)(m->losses + 1u) : 0u;
-    if (m->total == OT_WIN_SCORE) m->result = OT_RESULT_WIN;
-    else if (m->losses == 2u) m->result = OT_RESULT_OVER;
+    if (m->total >= OT_WIN_SCORE) m->result = OT_RESULT_WIN;
+    else if (m->losses == 2u || m->stage == OT_CHALLENGE_STAGES) m->result = OT_RESULT_OVER;
 }
 
 uint8_t ot_match_computer_turn(const OtMatch *m)
@@ -117,9 +139,11 @@ uint8_t ot_match_control(OtMatch *m, OtControl action, uint32_t value, uint32_t 
     case OT_START:
     case OT_RESTART:
         if (action == OT_START && m->phase != OT_FINISHED) return 0u;
-        if (m->result == OT_RESULT_WIN || m->result == OT_RESULT_OVER || m->result == OT_RESULT_EXIT) {
-            m->total = 0u;
-            m->losses = 0u;
+        if (m->phase == OT_FINISHED) {
+            if (m->result == OT_RESULT_WIN || m->result == OT_RESULT_OVER || m->result == OT_RESULT_EXIT)
+                clear_scores(m);
+            else if (m->mode == OT_CHALLENGE && !m->edited)
+                ++m->stage;
         }
         new_round(m);
         return 1u;
@@ -127,8 +151,7 @@ uint8_t ot_match_control(OtMatch *m, OtControl action, uint32_t value, uint32_t 
         if (value > OT_TIMED || seconds == 0u || seconds > OT_MAX_SECONDS) return 0u;
         m->mode = (OtMode)value;
         m->limit_seconds = (uint16_t)seconds;
-        m->total = 0u;
-        m->losses = 0u;
+        clear_scores(m);
         new_round(m);
         return 1u;
     case OT_PAUSE:

@@ -14,6 +14,9 @@ namespace Othello.Basic {
         public GameResult Result { get; internal set; }
         public uint Round { get; internal set; }
         public uint Total { get; internal set; }
+        public uint Stage { get; internal set; }
+        public decimal Score { get; internal set; }
+        public decimal TotalScore { get; internal set; }
         public uint Losses { get; internal set; }
         public uint RemainingMs { get; internal set; }
         public uint ElapsedMs { get; internal set; }
@@ -69,7 +72,8 @@ namespace Othello.Basic {
             return value;
         }
         public static BoardState ParseState(string[] f) {
-            bool advanced=f.Length==18 && (f[0]=="@GAME" || f[0]=="@GAME2");
+            bool staged=f.Length==21 && f[0]=="@GAME3";
+            bool advanced=staged || (f.Length==18 && (f[0]=="@GAME" || f[0]=="@GAME2"));
             if(!advanced && (f.Length!=8 || f[0]!="@STATE")) throw new FormatException("棋盘帧字段错误");
             uint seq=Number(f[1]), rev=Number(f[2]), turn=Number(f[3]), status=Number(f[4]), black=Number(f[5]), white=Number(f[6]);
             string cells=f[7]; int actualBlack=0, actualWhite=0;
@@ -85,7 +89,15 @@ namespace Othello.Basic {
                     remaining>limit*1000 || (mode!=2 && (remaining!=0 || result==2)) ||
                     (mode!=1 && (losses!=0 || result>3)) || (phase==3)!=(status==1) || (phase==3)!=(result!=0))
                     throw new FormatException("进阶状态不合法");
+                uint stage=0, scoreHalf=black*2, totalHalf=0;
+                if(staged) {
+                    stage=Number(f[18]); scoreHalf=Number(f[19]); totalHalf=Number(f[20]);
+                    uint expectedScore=phase==3 && (edited==1 || result==3) ? 0 : black*(mode==1?stage:2);
+                    if((mode==1 ? stage<1 || stage>4 : stage!=0 || totalHalf!=0) || totalHalf>1 || scoreHalf!=expectedScore)
+                        throw new FormatException("关卡得分不合法");
+                }
                 state.Match=new MatchState { Mode=(GameMode)mode, Phase=(GamePhase)phase, Round=round, Total=total,
+                    Stage=stage, Score=scoreHalf/2m, TotalScore=total+totalHalf/2m,
                     Losses=losses, RemainingMs=remaining, ElapsedMs=elapsed, Edited=edited==1, Result=(GameResult)result, LimitSeconds=limit };
             }
             return state;

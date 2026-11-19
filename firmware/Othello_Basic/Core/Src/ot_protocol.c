@@ -20,27 +20,31 @@ int ot_state(const OtGame *g, uint32_t seq, char *out, size_t cap)
     return finish(out, cap, state_payload(g, "@STATE", seq, out, cap));
 }
 
-static int game_state(const OtMatch *m, const char *tag, uint32_t seq, char *out, size_t cap)
+int ot_match_state(const OtMatch *m, OtStateFormat format, uint32_t seq, char *out, size_t cap)
 {
-    int base = state_payload(&m->game, tag, seq, out, cap);
-    int n;
+    static const char *const tags[] = { "@STATE", "@GAME", "@GAME2", "@GAME3" };
+    int base, n;
+    if (format == OT_FORMAT_BASIC) return ot_state(&m->game, seq, out, cap);
+    base = state_payload(&m->game, tags[format], seq, out, cap);
     if (base < 0 || (size_t)base >= cap) return -1;
     n = snprintf(out + base, cap - (size_t)base, ",%u,%u,%lu,%lu,%u,%lu,%lu,%u,%u,%u",
                  (unsigned)m->mode, (unsigned)m->phase, (unsigned long)m->round,
                  (unsigned long)m->total, m->losses, (unsigned long)m->remaining_ms,
                  (unsigned long)m->elapsed_ms, m->edited, (unsigned)m->result, m->limit_seconds);
     if (n < 0 || (size_t)n >= cap - (size_t)base) return -1;
-    return finish(out, cap, base + n);
-}
-
-int ot_game_state(const OtMatch *m, uint32_t seq, char *out, size_t cap)
-{
-    return game_state(m, "@GAME", seq, out, cap);
+    base += n;
+    if (format == OT_FORMAT_STAGES) {
+        n = snprintf(out + base, cap - (size_t)base, ",%u,%u,%u",
+                     (unsigned)m->stage, ot_match_score_half(m), (unsigned)m->total_half_point);
+        if (n < 0 || (size_t)n >= cap - (size_t)base) return -1;
+        base += n;
+    }
+    return finish(out, cap, base);
 }
 static int err(uint32_t seq,const char *why,char *out,size_t cap){return finish(out,cap,snprintf(out,cap,"@ERROR,%lu,%s",(unsigned long)seq,why));}
 static int number(const char *s,uint32_t *v){uint32_t n=0;unsigned d;if(!s||!*s)return 0;while(*s){if(*s<'0'||*s>'9')return 0;d=(unsigned)(*s++-'0');if(n>(UINT32_MAX-d)/10u)return 0;n=n*10u+d;}*v=n;return 1;}
 static int hex4(const char *s,uint16_t *v){unsigned i,d;uint16_t n=0;if(strlen(s)!=4)return 0;for(i=0;i<4;i++){char c=s[i];if(c>='0'&&c<='9')d=c-'0';else if(c>='A'&&c<='F')d=c-'A'+10;else if(c>='a'&&c<='f')d=c-'a'+10;else return 0;n=(uint16_t)((n<<4)|d);}*v=n;return 1;}
-int ot_match_command(OtMatch *m, const char *line, char *out, size_t cap)
+int ot_match_command(OtMatch *m, OtStateFormat *format, const char *line, char *out, size_t cap)
 {
     static const char *const names[] = { "START", "PAUSE", "RESUME", "END", "RESTART", "MODE", "EDIT" };
     char buf[OT_LINE_MAX], *last, *fields[6], *p;
@@ -63,9 +67,16 @@ int ot_match_command(OtMatch *m, const char *line, char *out, size_t cap)
         fields[count++] = p + 1;
     }
     if (count < 2u || !number(fields[1], &seq) || !seq) return err(0, "FORMAT", out, cap);
-    if (!strcmp(buf, "@GET") && count == 2u) return ot_state(&m->game, seq, out, cap);
-    if (!strcmp(buf, "@SYNC") && count == 2u) return ot_game_state(m, seq, out, cap);
-    if (!strcmp(buf, "@SYNC2") && count == 2u) return game_state(m, "@GAME2", seq, out, cap);
+    if (count == 2u) {
+        OtStateFormat reply;
+        if (!strcmp(buf, "@GET")) reply = OT_FORMAT_BASIC;
+        else if (!strcmp(buf, "@SYNC")) reply = OT_FORMAT_ADVANCED;
+        else if (!strcmp(buf, "@SYNC2")) reply = OT_FORMAT_COMPUTER;
+        else if (!strcmp(buf, "@SYNC3")) reply = OT_FORMAT_STAGES;
+        else return err(seq, "COMMAND", out, cap);
+        *format = reply == OT_FORMAT_COMPUTER ? OT_FORMAT_ADVANCED : reply;
+        return ot_match_state(m, reply, seq, out, cap);
+    }
 
     legacy = !strcmp(buf, "@MOVE");
     move = legacy || !strcmp(buf, "@PLAY");
@@ -90,5 +101,7 @@ int ot_match_command(OtMatch *m, const char *line, char *out, size_t cap)
             if (!ot_match_edit(m, (uint8_t)a, (uint8_t)b, (uint8_t)piece)) return err(seq, "NOT_EDITING", out, cap);
         }
     }
-    return legacy ? ot_state(&m->game, seq, out, cap) : ot_game_state(m, seq, out, cap);
+    if (legacy) *format = OT_FORMAT_BASIC;
+    else if (*format != OT_FORMAT_STAGES) *format = OT_FORMAT_ADVANCED;
+    return ot_match_state(m, *format, seq, out, cap);
 }

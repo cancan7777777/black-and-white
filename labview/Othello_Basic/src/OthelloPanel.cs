@@ -196,8 +196,10 @@ namespace Othello.Basic {
             turn.Text=state==null?"当前回合：—":state.Status==1?"本局已结束":
                 state.ComputerTurn?"当前回合：电脑（白方）":"当前回合："+(state.Turn==1?"黑方":"白方");
             counts.Text=session.State==null?"黑  —    白  —":"黑  "+session.State.Black+"    白  "+session.State.White+"    v"+session.State.Revision;
+            string stage=match!=null&&match.Stage!=0 ? " · 第 "+match.Stage+"/4 关 ×"+(match.Stage/2m).ToString("0.#") : "";
+            string scoreLabel=stage.Length!=0 ? "本关" : "本局";
             scoring.Text=match==null?"本局 — 分  总分 — 分":(state.ComputerOpponent?"闯关（人机）":GameArchive.ModeName(match.Mode))+
-                " · 本局 "+state.Black+" 分  总分 "+match.Total+" 分"+
+                stage+" · "+scoreLabel+" "+match.Score.ToString("0.#")+" 分  总分 "+match.TotalScore.ToString("0.#")+" 分"+
                 (match.Mode==GameMode.Timed?"  剩余 "+(match.RemainingMs/1000.0).ToString("F1")+" s":match.Mode==GameMode.Challenge?"  连败 "+match.Losses+" 局":"")+
                 (match.Edited?"  已编辑":"");
             string text=session.LogText;if(log.Text!=text) { log.Text=text;log.SelectionStart=log.TextLength;log.ScrollToCaret(); }
