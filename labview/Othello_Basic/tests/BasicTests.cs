@@ -116,17 +116,40 @@ class BasicTests {
                 host.Move(2,3);
                 host.Control(GameControl.End);
                 host.Refresh();
+                foreach(GameMode mode in Enum.GetValues(typeof(GameMode))) {
+                    for(int trial=0;trial<5;trial++) {
+                        host.Control(GameControl.Mode,mode,1);
+                        if(mode==GameMode.Timed) {
+                            if(trial%2==1) host.Move(2,3);
+                            Thread.Sleep(1050);
+                            host.Refresh();
+                        } else {
+                            for(int moves=0;host.State.Status==0 && moves<60;moves++) {
+                                uint revision=host.State.Revision;
+                                for(int i=0;i<64 && host.State.Revision==revision;i++) {
+                                    int square=(i+trial*7)%64;
+                                    host.Move(square/8,square%8);
+                                }
+                                if(host.State.Revision==revision) throw new Exception("Archive test could not find a legal move");
+                            }
+                        }
+                        if(host.State.Status!=1) throw new Exception("Archive test round did not finish");
+                    }
+                }
             }
             int unreadable;
             var reopened=new GameArchive(folder).Load(out unreadable);
-            Check(unreadable==0 && reopened.Count==1,"finished round saved once and reopened");
-            Check(reopened[0].Complete && reopened[0].Frames.Count==3 && reopened[0].Frames[0].Cells==InitialBoard() &&
-                reopened[0].Frames[1].ToBoard().White==1,"replay preserves opening, move and finish");
+            Check(unreadable==0 && reopened.Count==16,"all real simulated rounds reopen with no duplicate on refresh");
+            GameRecord exited=reopened.Find(record=>record.Result==GameResult.Exit);
+            Check(exited!=null && exited.Complete && exited.Frames.Count==3 && exited.Frames[0].Cells==InitialBoard() &&
+                exited.Frames[1].ToBoard().White==1,"replay preserves opening, move and finish");
             foreach(GameMode mode in Enum.GetValues(typeof(GameMode))) {
-                for(int index=0;index<6;index++) reopened.Add(new GameRecord { Mode=mode, Result=GameResult.Board,
-                    EndedUtc=DateTime.UtcNow, Score=index, ElapsedMs=1000, Edited=index==5 });
+                var edited=new GameRecord { Mode=mode, Result=GameResult.Board, Score=64, Edited=true };
+                reopened.Add(edited);
                 var rank=GameArchive.Rank(reopened,mode);
-                Check(rank.Count==5 && rank[0].Score==4 && rank[4].Score==0,"per-mode leaderboard holds five verified records");
+                Check(rank.Count==5 && !rank.Contains(edited) && rank[0].Score>=rank[4].Score && rank.TrueForAll(game=>game.Complete),
+                    "per-mode leaderboard uses five complete simulated rounds and excludes edits and exits");
+                reopened.Remove(edited);
                 string export=Path.Combine(folder,"rank-"+mode+".csv");
                 GameArchive.Export(export,rank);
                 Check(File.ReadAllLines(export).Length==6,"rank export contains header and five records");
