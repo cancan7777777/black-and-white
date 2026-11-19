@@ -12,9 +12,9 @@ $compilerEnvironment=& cmd.exe /d /s /c ('"'+$environmentBatch+'" >nul && set')
 if($LASTEXITCODE -ne 0){throw 'Existing MSVC x86 environment unavailable'}
 foreach($line in $compilerEnvironment){$separator=$line.IndexOf('=');if($separator -gt 0){[Environment]::SetEnvironmentVariable($line.Substring(0,$separator),$line.Substring($separator+1),'Process')}}
 $inputCore=Join-Path $root 'firmware/Othello_Basic/Core'
-& cl.exe /nologo /LD /MT /O2 /W3 "/I$inputCore/Inc" "$project/src/NativeSimulator.c" "$inputCore/Src/othello.c" "$inputCore/Src/ot_match.c" "$inputCore/Src/ot_protocol.c" "/Fo:$build\" "/Fe:$nativeBin/OthelloSimulator.dll" /link "/DEF:$project/src/NativeSimulator.def" "/IMPLIB:$build/OthelloSimulator.lib"
+& cl.exe /nologo /LD /MT /O2 /W3 "/I$inputCore/Inc" "$project/src/NativeSimulator.c" "$inputCore/Src/othello.c" "$inputCore/Src/ot_match.c" "$inputCore/Src/ot_protocol.c" "/Fo:$build\" "/Fe:$nativeBin/OthelloSimulatorV2.dll" /link "/DEF:$project/src/NativeSimulator.def" "/IMPLIB:$build/OthelloSimulatorV2.lib"
 if($LASTEXITCODE -ne 0){throw 'Native offline simulator build failed'}
-& cl.exe /nologo /MT /O2 /W3 "/I$inputCore/Inc" "$project/tests/MatchTests.c" "$inputCore/Src/othello.c" "$inputCore/Src/ot_match.c" "/Fo:$build\" "/Fe:$build/MatchTests.exe"
+& cl.exe /nologo /MT /O2 /W3 "/I$inputCore/Inc" "$project/tests/MatchTests.c" "$inputCore/Src/othello.c" "$inputCore/Src/ot_match.c" "$inputCore/Src/ot_protocol.c" "$inputCore/Src/app_basic.c" "/Fo:$build\" "/Fe:$build/MatchTests.exe"
 if($LASTEXITCODE -ne 0){throw 'Native match tests build failed'}
 & "$build/MatchTests.exe"
 if($LASTEXITCODE -ne 0){throw 'Native match tests failed'}

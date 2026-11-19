@@ -35,8 +35,9 @@ namespace Othello.Basic {
             toolbar.Controls.Add(previous); toolbar.Controls.Add(next);
             layout.Controls.Add(toolbar,0,0); layout.Controls.Add(board,0,1); layout.Controls.Add(step,0,2); layout.Controls.Add(frame,0,3);
             replay.Controls.Add(layout);
-            foreach(GameRecord game in records) games.Items.Add(string.Format("{0:g} · {1} · {2} · {3} 分{4}",
-                game.EndedUtc.ToLocalTime(),GameArchive.ModeName(game.Mode),game.Simulated?"模拟":"实体",game.Score,game.Complete?"":" · 部分记录"));
+            foreach(GameRecord game in records) games.Items.Add(string.Format("{0:g} · {1} · {2} · {3:0.#} 分{4}",
+                game.EndedUtc.ToLocalTime(),GameArchive.ModeName(game.Mode)+(game.Stage>0?" 第 "+game.Stage+" 关":""),
+                game.Simulated?"模拟":"实体",game.Score,game.Complete?"":" · 部分记录"));
             games.SelectedIndexChanged+=delegate { step.Maximum=records[games.SelectedIndex].Frames.Count-1; step.Value=0; RenderFrame(); };
             step.ValueChanged+=delegate { RenderFrame(); };
             previous.Click+=delegate { if(step.Value>0) step.Value--; };
@@ -79,7 +80,7 @@ namespace Othello.Basic {
             for(int i=0;i<rank.Count;i++) {
                 GameRecord game=rank[i];
                 standings.Items.Add(new ListViewItem(new[]{(i+1).ToString(),game.EndedUtc.ToLocalTime().ToString("g"),
-                    game.Score.ToString(),game.Total.ToString(),(game.ElapsedMs/1000.0).ToString("F2"),game.Result.ToString()}));
+                    game.Score.ToString("0.#"),game.Total.ToString("0.#"),(game.ElapsedMs/1000.0).ToString("F2"),game.Result.ToString()}));
             }
             standings.EndUpdate(); export.Enabled=rank.Count>0;
         }

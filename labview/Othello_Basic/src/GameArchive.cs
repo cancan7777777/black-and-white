@@ -23,8 +23,9 @@ namespace Othello.Basic {
         public DateTime EndedUtc { get; set; }
         public GameMode Mode { get; set; }
         public GameResult Result { get; set; }
-        public int Score { get; set; }
-        public uint Total { get; set; }
+        public decimal Score { get; set; }
+        public decimal Total { get; set; }
+        public uint Stage { get; set; }
         public uint ElapsedMs { get; set; }
         public bool Edited { get; set; }
         public bool Simulated { get; set; }
@@ -59,7 +60,7 @@ namespace Othello.Basic {
             }
             if(match.Phase!=GamePhase.Finished || settledRound==match.Round) return;
             if(current.EndedUtc==default(DateTime)) current.EndedUtc=DateTime.UtcNow;
-            current.Result=match.Result; current.Score=state.Black; current.Total=match.Total;
+            current.Result=match.Result; current.Score=match.Score; current.Total=match.TotalScore; current.Stage=match.Stage;
             current.ElapsedMs=match.ElapsedMs; current.Edited=match.Edited;
             Directory.CreateDirectory(folder);
             string path=Path.Combine(folder,current.Id+".xml");
@@ -105,7 +106,7 @@ namespace Othello.Basic {
             using(var writer=new StreamWriter(file,false,new UTF8Encoding(true))) {
                 writer.WriteLine("模式,结束时间,本局得分(分),总分(分),用时(s),来源,结果");
                 foreach(GameRecord record in records)
-                    writer.WriteLine(string.Format(CultureInfo.InvariantCulture,"{0},{1:O},{2},{3},{4:F3},{5},{6}",
+                    writer.WriteLine(string.Format(CultureInfo.InvariantCulture,"{0},{1:O},{2:0.#},{3:0.#},{4:F3},{5},{6}",
                         ModeName(record.Mode),record.EndedUtc.ToLocalTime(),record.Score,record.Total,
                         record.ElapsedMs/1000.0,record.Simulated?"离线模拟":"实体棋盘",record.Result));
             }

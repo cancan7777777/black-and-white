@@ -5,7 +5,8 @@
 static struct {
     OtMatch match;
     AppBasicPorts ports;
-    uint8_t row, col, dirty, broadcast, blink, notifying, advanced;
+    uint8_t row, col, dirty, broadcast, blink, notifying;
+    OtStateFormat format;
     uint32_t blink_at;
     struct { AppBasicObserver callback; void *context; } observers[APP_BASIC_MAX_OBSERVERS];
 } app;
@@ -125,12 +126,8 @@ uint8_t AppBasic_ProcessFrame(const char *frame)
         !app.ports.can_send(app.ports.context)) return 0u;
     before = app.match.game.revision;
     round = app.match.round;
-    length = ot_match_command(&app.match, frame, response, sizeof(response));
-    if (length > 0) {
-        if (!strncmp(response, "@GAME,", 6u)) app.advanced = 1u;
-        if (!strncmp(response, "@STATE,", 7u)) app.advanced = 0u;
-        if (!app.ports.send(response, (size_t)length, app.ports.context)) app.broadcast = 1u;
-    }
+    length = ot_match_command(&app.match, &app.format, frame, response, sizeof(response));
+    if (length > 0 && !app.ports.send(response, (size_t)length, app.ports.context)) app.broadcast = 1u;
     if (before != app.match.game.revision) {
         if (app.match.round != round) { app.row = 2u; app.col = 3u; }
         app.dirty = 1u;
@@ -161,8 +158,7 @@ void AppBasic_Tick(uint32_t now)
     }
     if (app.broadcast && app.ports.can_send && app.ports.send &&
         app.ports.can_send(app.ports.context)) {
-        length = app.advanced ? ot_game_state(&app.match, 0u, response, sizeof(response)) :
-                                ot_state(&app.match.game, 0u, response, sizeof(response));
+        length = ot_match_state(&app.match, app.format, 0u, response, sizeof(response));
         if (length > 0 && app.ports.send(response, (size_t)length, app.ports.context))
             app.broadcast = 0u;
     }
