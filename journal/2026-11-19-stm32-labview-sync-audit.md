@@ -24,3 +24,8 @@
 - 用户询问 HEX 烧录与 LabVIEW 的分工。沿用 #10，核对当前 CubeMX 工程下的 `firmware/Othello_Basic/MDK-ARM/Othello_Basic.uvprojx`。目标 STM32F103C8，Keil 工程启用 HEX 输出，烧录接口配置引用 ST-LINK 驱动。LabVIEW 在固件启动后以 USART1 的 COM 口进入实物对局。
 - 运行 `tools/build-keil.ps1`，当前 `main.c`、`app_basic.c`、`ot_match.c`、`ot_protocol.c` 均编译入工程，结果 0 错误、0 警告。重新生成 `firmware/Othello_Basic/MDK-ARM/Othello_Basic/Othello_Basic.hex`，44 KB 级文件，核对 Intel HEX 扩展线性地址记录为 `0x0800`，末尾有 EOF。
 - 用现有 Keil + ST-LINK（SWD）可从工程执行 Flash → Download。也可在支持 Intel HEX 的烧录软件中直接选择同一个 HEX，例如 STM32CubeProgrammer。本轮只在本机编译，没有写入板卡。
+
+## 同日 · 端口选择变灰排查
+
+- 用户接入硬件后截图仍显示「离线模拟 / 已连接」。核对 `OthelloPanel.Render`，连接中锁定方式与串口参数，只有断开且选中「真实串口」才开放端口框。
+- 只读查询 `SerialPort.GetPortNames()` 和 `Get-PnpDevice -Class Ports -PresentOnly`，确认 Windows 识别 `USB-SERIAL CH340 (COM6)`，状态 `OK`。操作顺序为「断开 → 方式选真实串口 → 端口选 COM6 → 115200 8N1 → 连接」。确认连通以收到 STM32 棋盘帧为准。保留用户当前模拟对局，未切换 VI 或打开实体串口。
