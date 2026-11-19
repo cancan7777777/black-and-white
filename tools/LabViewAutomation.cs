@@ -32,6 +32,11 @@ public static class LabViewAutomation {
                 Invoke(vi, "SaveInstrument", args[2], false, false);
                 Put(vi, "FPWinOpen", true);
                 Console.WriteLine("CREATED " + args[2]);
+            } else if (args[0] == "save") {
+                string path = Path.GetFullPath(args[1]);
+                object vi = Invoke(app, "GetVIReference", path, "", false, 0);
+                Invoke(vi, "SaveInstrument", path, false, false);
+                Console.WriteLine("SAVED " + path);
             } else if (args[0] == "open") {
                 object vi = Invoke(app, "GetVIReference", args[1], "", false, 0);
                 Invoke(vi, "OpenFrontPanel", true, 1);

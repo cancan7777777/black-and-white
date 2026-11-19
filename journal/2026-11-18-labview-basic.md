@@ -111,3 +111,11 @@
 - 用户提供的最新截图已进入「选择 .NET 控件」。异常点名 `OthelloSimulator.dll`，提示模块应包含程序集清单。用程序集元数据读取验证 `Othello.Basic.dll` 可识别，`OthelloSimulator.dll` 触发同类异常，符合原生库被 .NET 加载器读取的情形。
 - 在 #9 范围内调整构建输出，棋盘程序集留在 `bin`，模拟库移入 `bin/native`。离线模式按棋盘程序集的位置加载模拟库。若旧构建在 `bin` 顶层留有模拟 DLL，成功构建后把它移入忽略的 `build/labview` 备份。README 补充选取文件的说明。
 - `tools/build-labview.ps1` 生成新的组件和模拟库。复查 `bin` 顶层只有一个 DLL，即 `Othello.Basic.dll`。从 `build/labview` 启动 `BasicTests.exe`，当前工作区棋规下的协议、模拟对局与面板交互共 46 项检查通过。本轮没有操作 LabVIEW 界面。Main.vi 绑定、运行和实机联调仍待验证。
+
+### 2026-11-19 · 续做 Main.vi 连线与离线验收
+
+- 用户确认已完成棋盘组件选择，授权继续 #9 的基础上位机任务。目标是在项目原有 Main.vi 中保存绑定，接入面板的启动和退出流程，并验证无板卡时可落子、退出和重新运行。
+- 磁盘上的 Main.vi 仍是模板的大小和时间戳。以 ActiveX 查询到该路径的 VI 前面板在已打开状态。先核对并保留当前会话的编辑，再完成框图。优先脚本，必要时使用已获允许的少量界面操作。
+- 前面板可访问性树出现「黑白棋 / OTHELLO」「请运行 Main.vi」及棋盘组件的串口控件，确认控件已在当前会话内实例化。核对时重新打开组件选择对话框，窗口被模态禁用，`Ctrl+S` 返回 `failed to activate captured window`。已请用户关闭该弹窗，以保留已绑定控件。
+- 已备份磁盘上的 Main.vi，编译并发起 ActiveX `SaveInstrument`，待模态解除后复查。独立 `BasicTests.exe` 再次通过 46 项。此时结果仍不包含 VI 的框图运行验收。
+- 复查弹窗确实选中 `Othello.Basic` 下的 `OthelloPanel`。窗口列表未提供可单独控制的弹窗，按弹窗截图点击「取消」仍返回 `failed to activate captured window`。磁盘文件仍为 9,764 字节。保留 LabVIEW 会话和待保存编辑；弹窗解除后先核实保存，再接 `Start()`、While 循环和 `Stopped`，最后执行离线运行验收。
