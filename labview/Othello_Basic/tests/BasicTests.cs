@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO.Ports;
+using System.IO;
 using System.Threading;
 using System.Windows.Forms;
 using Othello.Basic;
@@ -55,8 +56,87 @@ class BasicTests {
             move.PerformClick();
             WaitForPanel(() => board.Board.Revision == 2, "panel move displays a confirmed change");
             Check(board.Board.Black == 4 && board.Board.White == 1, "panel refresh shows the flipped counts");
+            var pause = FindControl<Button>(panel, button => button.Text == "暂停");
+            var resume = FindControl<Button>(panel, button => button.Text == "继续");
+            pause.PerformClick();
+            WaitForPanel(() => board.Board.Match.Phase == GamePhase.Paused && !move.Enabled && resume.Enabled,
+                "embedded pause disables moves and offers resume");
+            resume.PerformClick();
+            WaitForPanel(() => board.Board.Match.Phase == GamePhase.Running && move.Enabled,"embedded resume restores moves");
             finish.PerformClick();
             Check(panel.Stopped && board.Board == null && !move.Enabled, "panel finish stops and clears the session");
+        }
+    }
+
+    static void CheckAdvanced() {
+        using(var host=new HostSession()) {
+            var legacy=new FakeTransport();
+            host.Connect(legacy);
+            Check(legacy.Last.StartsWith("@SYNC,1,"),"new host probes advanced protocol");
+            legacy.Inject(Protocol.Frame("@ERROR,1,COMMAND"));
+            Check(legacy.Last.StartsWith("@GET,2,"),"legacy negotiation falls back to GET");
+            legacy.Inject(State(2,1,InitialBoard(),1,0,2,2));
+            host.Move(2,3);
+            Check(legacy.Last.StartsWith("@MOVE,3,"),"legacy host move format preserved");
+        }
+        using(var host=new HostSession()) {
+            host.Connect(new SimulatedTransport());
+            Check(host.State.Match.Mode==GameMode.Casual,"advanced default boot game");
+            host.Control(GameControl.Mode,GameMode.Challenge,180);
+            Check(host.State.Match.Mode==GameMode.Challenge && host.State.Match.Total==0,"challenge mode confirmed");
+            host.Control(GameControl.Edit);
+            host.Edit(2,3,1);
+            Check(host.State.Match.Edited && host.State.Black==3 && host.State.Cells[19]=='1',"edit changes confirmed cell and counts");
+            host.Control(GameControl.Edit);
+            host.Control(GameControl.End);
+            Check(host.State.Match.Result==GameResult.Exit && host.State.Match.Total==0,"early exit does not score");
+            host.Control(GameControl.Start);
+            Check(host.State.Cells==InitialBoard() && !host.State.Match.Edited,"start initializes a fresh round");
+            host.Control(GameControl.Mode,GameMode.Timed,1);
+            host.Control(GameControl.Pause);
+            uint paused=host.State.Match.RemainingMs;
+            Thread.Sleep(1100);
+            host.Refresh();
+            Check(host.State.Match.RemainingMs==paused,"paused timer remains frozen past the limit");
+            host.Control(GameControl.Resume);
+            Thread.Sleep(1100);
+            host.Tick();
+            Check(host.State.Match.Result==GameResult.Time && host.State.Match.Total==2 && host.State.Match.ElapsedMs==1000,
+                "timer settles exactly at limit and credits the current round");
+        }
+    }
+
+    static void CheckArchive() {
+        string folder=Path.Combine(Path.GetDirectoryName(typeof(BasicTests).Assembly.Location),"archive-test-"+Guid.NewGuid().ToString("N"));
+        var archive=new GameArchive(folder);
+        try {
+            using(var host=new HostSession()) {
+                host.Changed+=delegate { archive.Observe(host.State,true); };
+                host.Connect(new SimulatedTransport());
+                host.Move(2,3);
+                host.Control(GameControl.End);
+                host.Refresh();
+            }
+            int unreadable;
+            var reopened=new GameArchive(folder).Load(out unreadable);
+            Check(unreadable==0 && reopened.Count==1,"finished round saved once and reopened");
+            Check(reopened[0].Complete && reopened[0].Frames.Count==3 && reopened[0].Frames[0].Cells==InitialBoard() &&
+                reopened[0].Frames[1].ToBoard().White==1,"replay preserves opening, move and finish");
+            foreach(GameMode mode in Enum.GetValues(typeof(GameMode))) {
+                for(int index=0;index<6;index++) reopened.Add(new GameRecord { Mode=mode, Result=GameResult.Board,
+                    EndedUtc=DateTime.UtcNow, Score=index, ElapsedMs=1000, Edited=index==5 });
+                var rank=GameArchive.Rank(reopened,mode);
+                Check(rank.Count==5 && rank[0].Score==4 && rank[4].Score==0,"per-mode leaderboard holds five verified records");
+                string export=Path.Combine(folder,"rank-"+mode+".csv");
+                GameArchive.Export(export,rank);
+                Check(File.ReadAllLines(export).Length==6,"rank export contains header and five records");
+                File.Delete(export);
+            }
+        } finally {
+            if(Directory.Exists(folder)) {
+                foreach(string file in Directory.GetFiles(folder)) File.Delete(file);
+                Directory.Delete(folder);
+            }
         }
     }
     [STAThread]
@@ -99,7 +179,9 @@ class BasicTests {
             Reject(delegate { new SerialSettings { DataBits=9 }.Validate(); },"invalid data bits");
             Reject(delegate { new SerialSettings { DataBits=8,StopBits=StopBits.OnePointFive }.Validate(); },"invalid 1.5 stop bits combination");
             CheckPanel();
-            Console.WriteLine("PASS "+checks+" checks: CRC, framing, malformed/stale state, native simulator, complete game, reconnect, serial settings, panel actions");
+            CheckAdvanced();
+            CheckArchive();
+            Console.WriteLine("PASS "+checks+" checks: framing, modes, editor, timers, replay, ranking, reconnect, panel actions");
             return 0;
         } catch(Exception error) { Console.Error.WriteLine(error);return 1; }
     }

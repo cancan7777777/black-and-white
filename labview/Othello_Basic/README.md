@@ -1,6 +1,6 @@
-# 黑白棋基础 LabVIEW 上位机
+# 黑白棋 LabVIEW 上位机
 
-本项目面向 Windows 上的 LabVIEW 2018 32 位。`Othello_Basic.lvproj` 是工程入口，`Main.vi` 是前面板入口。当前已构建棋盘、串口会话及离线模拟组件，原生 VI 的绑定和运行验收仍在进行。
+本项目面向 Windows 上的 LabVIEW 2018 32 位。打开 `Othello_Basic.lvproj` 下的 `Main.vi`，最大化前面板即可完整显示棋盘和按钮。首次从仓库下载时，先按下文构建 VI 使用的 32 位组件。
 
 ## 构建与验证
 
@@ -28,7 +28,7 @@
 
 如果对话框提到 `OthelloSimulator.dll` 和“程序集清单”，关闭提示后回到「浏览」，选择 `bin/Othello.Basic.dll`。模拟库位于 `bin/native`，由程序自动加载。[Microsoft 关于程序集清单错误的说明](https://learn.microsoft.com/en-us/dotnet/api/system.badimageformatexception?view=netframework-4.8.1)
 
-框图连线按以下步骤进行。原生绑定与连线待在当前安装环境验证。[NI 前面板 .NET 控件说明](https://www.ni.com/docs/en-US/bundle/labview/page/creating-net-controls-in-a-net-container.html)
+已保存的 `Main.vi` 包含以下连线。更换程序集路径时可参考上面的容器绑定步骤。[NI 前面板 .NET 控件说明](https://www.ni.com/docs/en-US/bundle/labview/page/creating-net-controls-in-a-net-container.html)
 
 1. 在框图中将 .NET 容器端子接到循环外的调用节点，选择 `Start()`。
 2. 将控件引用和 `Start()` 的错误输出接进 While 循环。每轮等待 100 ms，并通过属性节点读取 `Stopped`。`Stopped` 或错误状态为真时退出。
@@ -37,3 +37,12 @@
 - 离线开局应显示黑白各两子。从默认开局选第 3 行第 4 列并确认，预期黑 4、白 1，轮到白方。非法落子后棋盘应保持原状。
 - 实机模式填写串口参数并连接。默认值是 `115200 8N1`。棋盘通过 `GET` 同步，点击格子只选择坐标，确认后由 `MOVE` 请求落子，收到有效 `STATE` 才更新棋盘。
 - 真实 USB-UART 连接、键盘输入与实体点阵的双端一致性由之后的实机联调验证。
+
+## 进阶功能
+
+- 连接后可开始、暂停、继续、结束对局、重开本局及切换普通、闯关和计时模式。设定模式会开始新局并清零累计成绩。计时时长支持 1–3600 秒，默认 180 秒。
+- 「开启编辑」可把所选格设为空、黑或白。编辑期间普通落子暂停，退出编辑后恢复进入前的状态。本局分按黑棋数显示，总分和结果由下位机确认。离线模拟使用同一 C 状态机。
+- 「回放与排行」可逐步回看已保存棋局，按模式与来源浏览排行并导出 CSV。程序在终局保存 XML 到 `%LOCALAPPDATA%\Othello.Basic\Games`。连接中途加入或漏收动作时，回放标记为部分记录。编辑局和提前退出局可回看，排行统计正式结算的未编辑对局。
+- LabVIEW 正在使用旧组件时请保存工程并重新打开。若仍显示旧按钮，重新启动 LabVIEW 会加载新组件。
+
+规则和帧格式见[进阶规则与通信约定](../../docs/protocol-advanced.md)。
