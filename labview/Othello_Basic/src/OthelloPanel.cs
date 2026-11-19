@@ -3,8 +3,12 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
 using System.IO.Ports;
+using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
+
+[assembly: InternalsVisibleTo("BasicTests")]
 
 namespace Othello.Basic {
     public sealed class BoardView : Control {
@@ -67,33 +71,45 @@ namespace Othello.Basic {
         }
     }
     public sealed class OthelloPanel : UserControl {
+        const int EgaroucidMode=3;
         static readonly Color Ink=Color.FromArgb(26,52,46),Muted=Color.FromArgb(72,98,89);
         static readonly Color Canvas=Color.FromArgb(233,241,237),Tint=Color.FromArgb(240,247,243);
         readonly HostSession session=new HostSession();
-        readonly GameArchive archive=new GameArchive(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Othello.Basic","Games"));
+        readonly GameArchive archive;
         readonly BoardView board=new BoardView();
         readonly ComboBox mode=new ComboBox(),ports=new ComboBox(),baud=new ComboBox(),bits=new ComboBox(),parity=new ComboBox(),stops=new ComboBox();
         readonly Button connect=new Button(),disconnect=new Button(),refresh=new Button(),move=new Button(),finish=new Button();
         readonly Button startGame=new Button(),pauseGame=new Button(),resumeGame=new Button(),endGame=new Button();
         readonly Button restartGame=new Button(),applyMode=new Button(),toggleEdit=new Button(),editCell=new Button(),history=new Button();
+        readonly Button aiSettings=new Button();
         readonly ComboBox gameMode=new ComboBox(),piece=new ComboBox();
         readonly NumericUpDown limit=new NumericUpDown { Minimum=1,Maximum=3600,Value=180 };
         readonly NumericUpDown row=new NumericUpDown(),col=new NumericUpDown();
         readonly Label status=new Label(),counts=new Label(),turn=new Label(),connection=new Label();
         readonly Label scoring=new Label();
+        readonly Label limitLabel=Label("时长 (s)");
         readonly TextBox log=new TextBox();
         readonly System.Windows.Forms.Timer timer=new System.Windows.Forms.Timer();
         volatile bool stopped=true;
         bool connecting,active;
         int connectionAttempt;
+        bool selectingAiLevel;
+        int savedSeconds=180,savedLevel=5;
+        EgaroucidEngine egaroucid,requestedEngine;
+        BoardState modeBeforeRequest,searchPosition,submittedPosition;
+        CancellationTokenSource searchCancellation;
+        Task<int> search;
         public bool Stopped { get { return stopped; } }
-        public OthelloPanel() {
+        public OthelloPanel() : this(new GameArchive(Path.Combine(Environment.GetFolderPath(
+            Environment.SpecialFolder.LocalApplicationData),"Othello.Basic","Games"))) { }
+        internal OthelloPanel(GameArchive archive) {
+            this.archive=archive;
             Size=new Size(1060,720);MinimumSize=new Size(1000,660);
             BackColor=Canvas;ForeColor=Ink;Font=new Font("Microsoft YaHei UI",10);
             Build();
             session.Dispatch=delegate(Action action) { if(!IsDisposed && IsHandleCreated) BeginInvoke(action); };
             session.Changed+=Render;
-            timer.Interval=100;timer.Tick+=delegate { session.Tick(); };
+            timer.Interval=100;timer.Tick+=delegate { session.Tick(); TickEgaroucid(); };
             Render();
         }
         static Label Label(string text) {
@@ -133,7 +149,9 @@ namespace Othello.Basic {
             return grid;
         }
         static void AddField(TableLayoutPanel grid,int column,string caption,Control input) {
-            var label=Label(caption);
+            AddField(grid,column,Label(caption),input);
+        }
+        static void AddField(TableLayoutPanel grid,int column,Label label,Control input) {
             label.Margin=new Padding(4,0,4,0);
             grid.Controls.Add(label,column,0);
             input.Dock=DockStyle.Fill;
@@ -206,10 +224,11 @@ namespace Othello.Basic {
             scoring.TextAlign=ContentAlignment.MiddleLeft;
             sidebar.Controls.Add(scoring,0,2);
             var settings=Grid(3,19,0);
-            Combo(gameMode,new[]{"普通","闯关","计时"},0);
+            Combo(gameMode,new[]{"普通","闯关","计时","Egaroucid"},0);
+            gameMode.SelectedIndexChanged+=delegate { UpdateModeInput(); };
             AddField(settings,0,"模式",gameMode);
-            AddField(settings,1,"时长 (s)",limit);
-            Button(applyMode,"设定模式",delegate { Safe(delegate { session.Control(GameControl.Mode,(GameMode)gameMode.SelectedIndex,(int)limit.Value); }); });
+            AddField(settings,1,limitLabel,limit);
+            Button(applyMode,"设定模式",delegate { Safe(ApplyMode); });
             settings.Controls.Add(applyMode,2,0);
             settings.SetRowSpan(applyMode,2);
             sidebar.Controls.Add(settings,0,3);
@@ -242,7 +261,7 @@ namespace Othello.Basic {
             return sidebar;
         }
         Control BuildGameControls() {
-            var actions=Grid(7,0);
+            var actions=Grid(8,0);
             actions.BackColor=Color.White;
             actions.Padding=new Padding(8,2,8,2);
             actions.Margin=new Padding(0,0,0,8);
@@ -253,8 +272,122 @@ namespace Othello.Basic {
             Button(restartGame,"重开本局",delegate { Command(GameControl.Restart); });
             Button(toggleEdit,"开启编辑",delegate { Command(GameControl.Edit); });
             Button(history,"回放与排行",delegate { Safe(delegate { using(var window=new ArchiveWindow(archive)) window.ShowDialog(this); }); });
-            actions.Controls.AddRange(new Control[]{startGame,pauseGame,resumeGame,endGame,restartGame,toggleEdit,history});
+            Button(aiSettings,"AI 设置",delegate { Safe(SelectEgaroucid); });
+            actions.Controls.AddRange(new Control[]{startGame,pauseGame,resumeGame,endGame,restartGame,toggleEdit,history,aiSettings});
             return actions;
+        }
+        void UpdateModeInput() {
+            bool useLevel=gameMode.SelectedIndex==EgaroucidMode;
+            if(useLevel==selectingAiLevel) return;
+            selectingAiLevel=useLevel;
+            if(useLevel) {
+                savedSeconds=(int)limit.Value;
+                limit.Minimum=0;limit.Maximum=60;limit.Value=savedLevel;limitLabel.Text="AI 等级";
+            } else {
+                savedLevel=(int)limit.Value;
+                limit.Maximum=3600;limit.Minimum=1;limit.Value=savedSeconds;limitLabel.Text="时长 (s)";
+            }
+        }
+        static string ReadEgaroucidPath() {
+            return File.Exists(EgaroucidEngine.ConfigPath)?File.ReadAllText(EgaroucidEngine.ConfigPath).Trim():"";
+        }
+        void SelectEgaroucid() {
+            using(var picker=new OpenFileDialog { Title="选择 Egaroucid 控制台程序",Filter="控制台程序 (*.exe)|*.exe",
+                CheckFileExists=true,FileName=ReadEgaroucidPath() }) {
+                if(picker.ShowDialog(this)!=DialogResult.OK) return;
+                File.WriteAllText(EgaroucidEngine.ConfigPath,picker.FileName);
+                session.Report("已选择 "+Path.GetFileName(picker.FileName));
+            }
+        }
+        void ApplyMode() {
+            if(gameMode.SelectedIndex!=EgaroucidMode) {
+                StopEgaroucid();
+                session.Control(GameControl.Mode,(GameMode)gameMode.SelectedIndex,(int)limit.Value);
+                return;
+            }
+            var engine=new EgaroucidEngine(ReadEgaroucidPath(),(int)limit.Value);
+            var before=session.State;
+            StopEgaroucid();
+            session.Control(GameControl.Mode,GameMode.Casual,savedSeconds);
+            requestedEngine=engine;
+            modeBeforeRequest=before;
+        }
+        static bool Casual(BoardState state) {
+            return state!=null && state.Match!=null && state.Match.Mode==GameMode.Casual;
+        }
+        bool EgaroucidTurn(BoardState state) {
+            return egaroucid!=null && Casual(state) && state.Match.Phase==GamePhase.Running &&
+                state.Status==0 && state.Turn==2;
+        }
+        static bool SamePosition(BoardState first,BoardState next) {
+            return next!=null && first.Revision==next.Revision && first.Cells==next.Cells && first.Turn==next.Turn;
+        }
+        void CancelSearch() {
+            if(search==null) return;
+            var cancellation=searchCancellation;
+            cancellation.Cancel();
+            search.ContinueWith(finished => {
+                if(finished.IsFaulted) finished.Exception.Handle(error => true);
+                cancellation.Dispose();
+            },TaskScheduler.Default);
+            search=null;searchPosition=null;searchCancellation=null;
+        }
+        void StopEgaroucid() {
+            CancelSearch();
+            egaroucid=requestedEngine=null;
+            submittedPosition=modeBeforeRequest=null;
+        }
+        void EgaroucidFailed(string reason) {
+            StopEgaroucid();
+            session.Report("Egaroucid 未落子，已恢复手动。"+reason);
+        }
+        void TickEgaroucid() {
+            var state=session.State;
+            if(requestedEngine!=null && !session.Waiting) {
+                if(Casual(state) && state.Match.Phase==GamePhase.Running && state.Match.Round!=modeBeforeRequest.Match.Round)
+                    egaroucid=requestedEngine;
+                requestedEngine=null;modeBeforeRequest=null;
+                Render();
+            }
+            if(egaroucid==null) return;
+            if(!Casual(state)) {
+                StopEgaroucid();
+                Render();
+                return;
+            }
+            if(submittedPosition!=null) {
+                if(session.Waiting) return;
+                bool unconfirmed=SamePosition(submittedPosition,state);
+                submittedPosition=null;
+                if(unconfirmed) {
+                    EgaroucidFailed("棋局未确认 AI 落子，请刷新棋盘。");
+                    return;
+                }
+            }
+            bool whiteTurn=EgaroucidTurn(state);
+            if(search!=null && (!whiteTurn || !SamePosition(searchPosition,state))) CancelSearch();
+            if(!whiteTurn || session.Waiting) return;
+            if(search==null) {
+                var engine=egaroucid;
+                searchPosition=state;
+                searchCancellation=new CancellationTokenSource();
+                var cancellation=searchCancellation.Token;
+                search=Task.Factory.StartNew(()=>engine.FindWhiteMove(state,cancellation),cancellation,
+                    TaskCreationOptions.None,TaskScheduler.Default);
+                Render();
+                return;
+            }
+            if(!search.IsCompleted) return;
+            var completed=search;
+            searchCancellation.Dispose();
+            search=null;searchPosition=null;searchCancellation=null;
+            try {
+                int cell=completed.GetAwaiter().GetResult();
+                submittedPosition=state;
+                session.Move(cell/8,cell%8);
+            } catch(Exception error) {
+                EgaroucidFailed(error.Message);
+            }
         }
         void Command(GameControl command) {
             Safe(delegate { session.Control(command); });
@@ -267,9 +400,9 @@ namespace Othello.Basic {
         public void Shutdown() {
             stopped=true;
             if(InvokeRequired) { if(IsHandleCreated) BeginInvoke(new Action(Shutdown));return; }
-            active=false;connectionAttempt++;connecting=false;timer.Stop();session.Disconnect();Render();
+            active=false;connectionAttempt++;connecting=false;timer.Stop();StopEgaroucid();session.Disconnect();Render();
         }
-        void Disconnect() { connectionAttempt++;connecting=false;Safe(session.Disconnect); }
+        void Disconnect() { connectionAttempt++;connecting=false;StopEgaroucid();Safe(session.Disconnect); }
         void RefreshPorts() { string current=ports.Text;ports.Items.Clear();ports.Items.AddRange(SerialPort.GetPortNames());ports.Text=current; }
         void OnConnect(object sender,EventArgs args) {
             if(connecting || !active) return;
@@ -310,9 +443,10 @@ namespace Othello.Basic {
             mode.Enabled=!connected&&!connecting&&active;ports.Enabled=!connected&&!connecting&&active&&mode.SelectedIndex==1;
             baud.Enabled=bits.Enabled=parity.Enabled=stops.Enabled=!connected&&!connecting&&active;
             connect.Enabled=active&&!connected&&!connecting;disconnect.Enabled=active&&(connected||connecting);refresh.Enabled=active&&connected&&!session.Waiting;
-            move.Enabled=active&&connected&&!session.Waiting&&state!=null&&state.Status==0&&!state.ComputerTurn&&
+            bool egaroucidTurn=EgaroucidTurn(state);
+            move.Enabled=active&&connected&&!session.Waiting&&state!=null&&state.Status==0&&!state.ComputerTurn&&!egaroucidTurn&&
                 (match==null||match.Phase==GamePhase.Running);
-            finish.Enabled=active; history.Enabled=active;
+            finish.Enabled=active;history.Enabled=active;aiSettings.Enabled=active;
             bool ready=active&&connected&&!session.Waiting&&match!=null;
             startGame.Enabled=ready&&match.Phase==GamePhase.Finished;
             pauseGame.Enabled=ready&&match.Phase==GamePhase.Running;
@@ -324,18 +458,21 @@ namespace Othello.Basic {
             connection.Text=connecting?"正在连接…":!active?"请运行 Main.vi":connected?(mode.SelectedIndex==0?"离线模拟 / 已连接":"真实串口 / 已连接"):"未连接";
             connection.ForeColor=connected?Color.FromArgb(151,239,194):Color.FromArgb(219,233,226);
             board.Board=session.State;board.Invalidate();
-            status.Text=archiveError==null?session.Message:session.Message+Environment.NewLine+"棋局保存失败："+archiveError;
+            string message=egaroucidTurn?"Egaroucid 正在思考…":session.Message;
+            status.Text=archiveError==null?message:message+Environment.NewLine+"棋局保存失败："+archiveError;
             turn.Text=state==null?"当前回合：—":state.Status==1?"本局已结束":
+                egaroucidTurn?"当前回合：Egaroucid（白方）":
                 state.ComputerTurn?"当前回合：电脑（白方）":"当前回合："+(state.Turn==1?"黑方":"白方");
             counts.Text=session.State==null?"黑  —    白  —":"黑  "+session.State.Black+"    白  "+session.State.White+"    v"+session.State.Revision;
             string stage=match!=null&&match.Stage!=0 ? " · 第 "+match.Stage+"/4 关 ×"+(match.Stage/2m).ToString("0.#") : "";
             string scoreLabel=stage.Length!=0 ? "本关" : "本局";
-            scoring.Text=match==null?"本局 — 分  总分 — 分":(state.ComputerOpponent?"闯关（人机）":GameArchive.ModeName(match.Mode))+
+            scoring.Text=match==null?"本局 — 分  总分 — 分":(egaroucid!=null&&Casual(state)?"Egaroucid · 玩家执黑":
+                state.ComputerOpponent?"闯关（人机）":GameArchive.ModeName(match.Mode))+
                 stage+Environment.NewLine+scoreLabel+" "+match.Score.ToString("0.#")+" 分  总分 "+match.TotalScore.ToString("0.#")+" 分"+
                 (match.Mode==GameMode.Timed?"  剩余 "+(match.RemainingMs/1000.0).ToString("F1")+" s":match.Mode==GameMode.Challenge?"  连败 "+match.Losses+" 局":"")+
                 (match.Edited?"  已编辑":"");
             string text=session.LogText;if(log.Text!=text) { log.Text=text;log.SelectionStart=log.TextLength;log.ScrollToCaret(); }
         }
-        protected override void Dispose(bool disposing) { if(disposing) { connectionAttempt++;stopped=true;timer.Dispose();session.Dispose(); }base.Dispose(disposing); }
+        protected override void Dispose(bool disposing) { if(disposing) { connectionAttempt++;stopped=true;timer.Dispose();StopEgaroucid();session.Dispose(); }base.Dispose(disposing); }
     }
 }
