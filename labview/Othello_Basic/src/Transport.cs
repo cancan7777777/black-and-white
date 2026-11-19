@@ -26,7 +26,7 @@ namespace Othello.Basic {
         static IntPtr LoadSimulator() {
             // LabVIEW hosts this assembly with a working directory outside the project.
             string assemblyPath = new Uri(typeof(SimulatedTransport).Assembly.CodeBase).LocalPath;
-            string dllPath = Path.Combine(Path.GetDirectoryName(assemblyPath), SimulatorLibrary);
+            string dllPath = Path.Combine(Path.GetDirectoryName(assemblyPath), "native", SimulatorLibrary);
             IntPtr handle = LoadLibrary(dllPath);
             if (handle == IntPtr.Zero) {
                 var error = new Win32Exception(Marshal.GetLastWin32Error());

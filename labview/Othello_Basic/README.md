@@ -15,7 +15,7 @@
 | 文件 | 用途 |
 |---|---|
 | `bin/Othello.Basic.dll` | LabVIEW .NET 容器绑定的程序集 |
-| `bin/OthelloSimulator.dll` | 离线模拟下位机 |
+| `bin/native/OthelloSimulator.dll` | 原生模拟库，由棋盘组件在离线模式下加载 |
 | `bin/BasicTests.exe` | 在无板卡条件下测试协议、模拟对局和面板按钮 |
 
 ## 操作与验收
@@ -25,6 +25,8 @@
 1. 在 `Main.vi` 的**前面板**右键点击灰色 .NET 容器，选择「插入 .NET 控件」。如果还没有容器，从「控件选板 → .NET 与 ActiveX → .NET 容器」放置一个。
 2. 在「选择 .NET 控件」对话框中点「浏览」，选择本工程的 `bin/Othello.Basic.dll`。
 3. 在控件列表中选 `OthelloPanel`（完整类型名 `Othello.Basic.OthelloPanel`），点「确定」。绑定成功后容器里会显示棋盘控件。
+
+如果对话框提到 `OthelloSimulator.dll` 和“程序集清单”，关闭提示后回到「浏览」，选择 `bin/Othello.Basic.dll`。模拟库位于 `bin/native`，由程序自动加载。[Microsoft 关于程序集清单错误的说明](https://learn.microsoft.com/en-us/dotnet/api/system.badimageformatexception?view=netframework-4.8.1)
 
 框图连线按以下步骤进行。原生绑定与连线待在当前安装环境验证。[NI 前面板 .NET 控件说明](https://www.ni.com/docs/en-US/bundle/labview/page/creating-net-controls-in-a-net-container.html)
 

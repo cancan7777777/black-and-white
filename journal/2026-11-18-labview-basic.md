@@ -105,3 +105,9 @@
 - 用户截图显示 LabVIEW 对 `Othello.Basic.dll` 报“无法找到打开该类型文件的应用程序”，提示符合把组件当成工程文件直接打开的情况。
 - 用 32 位 .NET 读取并加载实际程序集，确认 `Othello.Basic` 为 x86，`Othello.Basic.OthelloPanel` 是公开的 `System.Windows.Forms.UserControl`，具备公共无参构造函数。该验证尚未涉及 LabVIEW 容器绑定。
 - README 增加精确选取路径和成功标志。用户应从前面板容器的「插入 .NET 控件 → 浏览」选择程序集。Main.vi 绑定、框图连线和实机联调仍待验证。
+
+### 2026-11-19 · 区分原生模拟库与 .NET 棋盘组件
+
+- 用户提供的最新截图已进入「选择 .NET 控件」。异常点名 `OthelloSimulator.dll`，提示模块应包含程序集清单。用程序集元数据读取验证 `Othello.Basic.dll` 可识别，`OthelloSimulator.dll` 触发同类异常，符合原生库被 .NET 加载器读取的情形。
+- 在 #9 范围内调整构建输出，棋盘程序集留在 `bin`，模拟库移入 `bin/native`。离线模式按棋盘程序集的位置加载模拟库。若旧构建在 `bin` 顶层留有模拟 DLL，成功构建后把它移入忽略的 `build/labview` 备份。README 补充选取文件的说明。
+- `tools/build-labview.ps1` 生成新的组件和模拟库。复查 `bin` 顶层只有一个 DLL，即 `Othello.Basic.dll`。从 `build/labview` 启动 `BasicTests.exe`，当前工作区棋规下的协议、模拟对局与面板交互共 46 项检查通过。本轮没有操作 LabVIEW 界面。Main.vi 绑定、运行和实机联调仍待验证。
