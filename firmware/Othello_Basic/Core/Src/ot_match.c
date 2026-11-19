@@ -1,0 +1,138 @@
+#include "ot_match.h"
+#include <string.h>
+
+static uint32_t next_revision(uint32_t revision)
+{
+    return revision == UINT32_MAX ? 1u : revision + 1u;
+}
+
+static void new_round(OtMatch *m)
+{
+    uint32_t revision = next_revision(m->game.revision);
+    ot_init(&m->game);
+    m->game.revision = revision;
+    m->round = next_revision(m->round);
+    m->phase = m->before_edit = OT_RUNNING;
+    m->result = OT_RESULT_NONE;
+    m->edited = 0u;
+    m->elapsed_ms = 0u;
+    m->remaining_ms = m->mode == OT_TIMED ? (uint32_t)m->limit_seconds * 1000u : 0u;
+}
+
+void ot_match_init(OtMatch *m)
+{
+    memset(m, 0, sizeof(*m));
+    m->limit_seconds = OT_DEFAULT_SECONDS;
+    new_round(m);
+}
+
+static void finish(OtMatch *m, OtResult reason)
+{
+    m->phase = OT_FINISHED;
+    m->result = reason;
+    m->game.status = OT_OVER;
+    m->game.turn = 0u;
+    if (reason == OT_RESULT_EXIT || m->edited) return;
+
+    if (m->total <= UINT32_MAX - m->game.black) m->total += m->game.black;
+    else m->total = UINT32_MAX;
+    if (m->mode != OT_CHALLENGE) return;
+
+    m->losses = m->game.black < m->game.white ? (uint8_t)(m->losses + 1u) : 0u;
+    if (m->total == OT_WIN_SCORE) m->result = OT_RESULT_WIN;
+    else if (m->losses == 2u) m->result = OT_RESULT_OVER;
+}
+
+uint8_t ot_match_tick(OtMatch *m, uint32_t now)
+{
+    uint32_t delta = m->clock_seen ? now - m->clock_ms : 0u;
+    m->clock_seen = 1u;
+    m->clock_ms = now;
+    if (m->phase != OT_RUNNING) return 0u;
+    if (m->mode == OT_TIMED && delta >= m->remaining_ms) {
+        m->elapsed_ms += m->remaining_ms;
+        m->remaining_ms = 0u;
+        m->game.revision = next_revision(m->game.revision);
+        finish(m, OT_RESULT_TIME);
+        return 1u;
+    }
+    if (m->mode == OT_TIMED) m->remaining_ms -= delta;
+    if (m->elapsed_ms <= UINT32_MAX - delta) m->elapsed_ms += delta;
+    else m->elapsed_ms = UINT32_MAX;
+    return 0u;
+}
+
+uint8_t ot_match_move(OtMatch *m, uint8_t row, uint8_t col)
+{
+    if (m->phase != OT_RUNNING || !ot_move(&m->game, row, col)) return 0u;
+    if (m->game.revision == 0u) m->game.revision = 1u;
+    if (m->game.status == OT_OVER) finish(m, OT_RESULT_BOARD);
+    return 1u;
+}
+
+uint8_t ot_match_control(OtMatch *m, OtControl action, uint32_t value, uint32_t seconds)
+{
+    switch (action) {
+    case OT_START:
+    case OT_RESTART:
+        if (action == OT_START && m->phase != OT_FINISHED) return 0u;
+        if (m->result == OT_RESULT_WIN || m->result == OT_RESULT_OVER || m->result == OT_RESULT_EXIT) {
+            m->total = 0u;
+            m->losses = 0u;
+        }
+        new_round(m);
+        return 1u;
+    case OT_SET_MODE:
+        if (value > OT_TIMED || seconds == 0u || seconds > OT_MAX_SECONDS) return 0u;
+        m->mode = (OtMode)value;
+        m->limit_seconds = (uint16_t)seconds;
+        m->total = 0u;
+        m->losses = 0u;
+        new_round(m);
+        return 1u;
+    case OT_PAUSE:
+        if (m->phase != OT_RUNNING) return 0u;
+        m->phase = OT_PAUSED;
+        break;
+    case OT_RESUME:
+        if (m->phase != OT_PAUSED) return 0u;
+        m->phase = OT_RUNNING;
+        if (!ot_has_move(&m->game, m->game.turn)) finish(m, OT_RESULT_BOARD);
+        break;
+    case OT_END:
+        if (m->phase == OT_FINISHED) return 0u;
+        finish(m, OT_RESULT_EXIT);
+        break;
+    case OT_TOGGLE_EDIT:
+        if (m->phase == OT_FINISHED) return 0u;
+        if (m->phase == OT_EDITING) {
+            m->phase = m->before_edit;
+            if (m->phase == OT_RUNNING && !ot_has_move(&m->game, m->game.turn))
+                finish(m, OT_RESULT_BOARD);
+        } else {
+            m->before_edit = m->phase;
+            m->phase = OT_EDITING;
+        }
+        break;
+    default:
+        return 0u;
+    }
+    m->game.revision = next_revision(m->game.revision);
+    return 1u;
+}
+
+uint8_t ot_match_edit(OtMatch *m, uint8_t row, uint8_t col, uint8_t piece)
+{
+    uint8_t *cell;
+    if (m->phase != OT_EDITING || row >= 8u || col >= 8u || piece > OT_WHITE) return 0u;
+    cell = &m->game.board[row * 8u + col];
+    if (*cell == piece) return 1u;
+    m->game.black -= *cell == OT_BLACK;
+    m->game.white -= *cell == OT_WHITE;
+    *cell = piece;
+    m->game.black += piece == OT_BLACK;
+    m->game.white += piece == OT_WHITE;
+    m->edited = 1u;
+    m->game.revision = next_revision(m->game.revision);
+    return 1u;
+}

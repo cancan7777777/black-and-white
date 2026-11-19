@@ -4,6 +4,22 @@ using System.Globalization;
 using System.Text;
 
 namespace Othello.Basic {
+    public enum GameMode { Casual, Challenge, Timed }
+    public enum GamePhase { Running, Paused, Editing, Finished }
+    public enum GameResult { None, Board, Time, Exit, Win, Over }
+    public enum GameControl { Start, Pause, Resume, End, Restart, Mode, Edit }
+    public sealed class MatchState {
+        public GameMode Mode { get; internal set; }
+        public GamePhase Phase { get; internal set; }
+        public GameResult Result { get; internal set; }
+        public uint Round { get; internal set; }
+        public uint Total { get; internal set; }
+        public uint Losses { get; internal set; }
+        public uint RemainingMs { get; internal set; }
+        public uint ElapsedMs { get; internal set; }
+        public uint LimitSeconds { get; internal set; }
+        public bool Edited { get; internal set; }
+    }
     public sealed class BoardState {
         public uint Sequence { get; private set; }
         public uint Revision { get; private set; }
@@ -12,12 +28,13 @@ namespace Othello.Basic {
         public int Black { get; private set; }
         public int White { get; private set; }
         public string Cells { get; private set; }
+        public MatchState Match { get; internal set; }
         public BoardState(uint seq, uint revision, int turn, int status, int black, int white, string cells) {
             Sequence=seq; Revision=revision; Turn=turn; Status=status; Black=black; White=white; Cells=cells;
         }
     }
     public static class Protocol {
-        public const int MaxLine = 160;
+        public const int MaxLine = 192;
         public static ushort Crc(string text) {
             ushort crc=0xffff;
             foreach (char ch in text) {
@@ -50,14 +67,26 @@ namespace Othello.Basic {
             return value;
         }
         public static BoardState ParseState(string[] f) {
-            if(f.Length!=8 || f[0]!="@STATE") throw new FormatException("STATE 字段错误");
+            bool advanced=f.Length==18 && f[0]=="@GAME";
+            if(!advanced && (f.Length!=8 || f[0]!="@STATE")) throw new FormatException("棋盘帧字段错误");
             uint seq=Number(f[1]), rev=Number(f[2]), turn=Number(f[3]), status=Number(f[4]), black=Number(f[5]), white=Number(f[6]);
             string cells=f[7]; int actualBlack=0, actualWhite=0;
             if(cells.Length!=64 || rev==0 || status>1 || (status==0 && turn!=1 && turn!=2) || (status==1 && turn!=0))
                 throw new FormatException("棋盘状态不合法");
             foreach(char ch in cells) { if(ch=='1') actualBlack++; else if(ch=='2') actualWhite++; else if(ch!='0') throw new FormatException("棋盘编码错误"); }
             if(black!=(uint)actualBlack || white!=(uint)actualWhite) throw new FormatException("棋子计数与棋盘不一致");
-            return new BoardState(seq,rev,(int)turn,(int)status,(int)black,(int)white,cells);
+            var state=new BoardState(seq,rev,(int)turn,(int)status,(int)black,(int)white,cells);
+            if(advanced) {
+                uint mode=Number(f[8]), phase=Number(f[9]), round=Number(f[10]), total=Number(f[11]), losses=Number(f[12]);
+                uint remaining=Number(f[13]), elapsed=Number(f[14]), edited=Number(f[15]), result=Number(f[16]), limit=Number(f[17]);
+                if(mode>2 || phase>3 || round==0 || losses>2 || edited>1 || result>5 || limit<1 || limit>3600 ||
+                    remaining>limit*1000 || (mode!=2 && (remaining!=0 || result==2)) ||
+                    (mode!=1 && (losses!=0 || result>3)) || (phase==3)!=(status==1) || (phase==3)!=(result!=0))
+                    throw new FormatException("进阶状态不合法");
+                state.Match=new MatchState { Mode=(GameMode)mode, Phase=(GamePhase)phase, Round=round, Total=total,
+                    Losses=losses, RemainingMs=remaining, ElapsedMs=elapsed, Edited=edited==1, Result=(GameResult)result, LimitSeconds=limit };
+            }
+            return state;
         }
     }
     public sealed class LineBuffer {

@@ -1,0 +1,5 @@
+Core/Src/app_basic.c
+Core/Src/app_platform.c
+Core/Src/othello.c
+Core/Src/ot_match.c
+Core/Src/ot_protocol.c

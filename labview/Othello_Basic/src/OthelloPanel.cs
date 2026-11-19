@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.IO;
 using System.IO.Ports;
 using System.Threading;
 using System.Windows.Forms;
@@ -38,11 +39,17 @@ namespace Othello.Basic {
     }
     public sealed class OthelloPanel : UserControl {
         readonly HostSession session=new HostSession();
+        readonly GameArchive archive=new GameArchive(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Othello.Basic","Games"));
         readonly BoardView board=new BoardView();
         readonly ComboBox mode=new ComboBox(),ports=new ComboBox(),baud=new ComboBox(),bits=new ComboBox(),parity=new ComboBox(),stops=new ComboBox();
-        readonly Button connect=new Button(),disconnect=new Button(),refresh=new Button(),move=new Button(),newSimulation=new Button(),finish=new Button();
+        readonly Button connect=new Button(),disconnect=new Button(),refresh=new Button(),move=new Button(),finish=new Button();
+        readonly Button startGame=new Button(),pauseGame=new Button(),resumeGame=new Button(),endGame=new Button();
+        readonly Button restartGame=new Button(),applyMode=new Button(),toggleEdit=new Button(),editCell=new Button(),history=new Button();
+        readonly ComboBox gameMode=new ComboBox(),piece=new ComboBox();
+        readonly NumericUpDown limit=new NumericUpDown { Minimum=1,Maximum=3600,Value=180,Width=68 };
         readonly NumericUpDown row=new NumericUpDown(),col=new NumericUpDown();
         readonly Label status=new Label(),counts=new Label(),turn=new Label(),connection=new Label();
+        readonly Label scoring=new Label { AutoSize=true,Margin=new Padding(4,9,4,3) };
         readonly TextBox log=new TextBox();
         readonly System.Windows.Forms.Timer timer=new System.Windows.Forms.Timer();
         volatile bool stopped=true;
@@ -61,8 +68,10 @@ namespace Othello.Basic {
         static void Combo(ComboBox box,int width,string[] values,int selected) { box.Width=width;box.DropDownStyle=ComboBoxStyle.DropDownList;box.Items.AddRange(values);box.SelectedIndex=selected;box.Margin=new Padding(2,4,10,4); }
         static void Button(Button button,string text,EventHandler handler) { button.Text=text;button.AutoSize=true;button.Height=32;button.Margin=new Padding(3,5,5,3);button.Click+=handler; }
         void Build() {
-            TableLayoutPanel layout=new TableLayoutPanel { Dock=DockStyle.Fill,ColumnCount=1,RowCount=4,Padding=new Padding(12) };
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute,48));layout.RowStyles.Add(new RowStyle(SizeType.Absolute,86));layout.RowStyles.Add(new RowStyle(SizeType.Percent,100));layout.RowStyles.Add(new RowStyle(SizeType.Absolute,32));Controls.Add(layout);
+            TableLayoutPanel layout=new TableLayoutPanel { Dock=DockStyle.Fill,ColumnCount=1,RowCount=5,Padding=new Padding(12) };
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute,48));layout.RowStyles.Add(new RowStyle(SizeType.Absolute,86));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute,82));layout.RowStyles.Add(new RowStyle(SizeType.Percent,100));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute,26));Controls.Add(layout);
             FlowLayoutPanel title=new FlowLayoutPanel { Dock=DockStyle.Fill,WrapContents=false };
             title.Controls.Add(new Label { Text="黑白棋 / OTHELLO",AutoSize=true,Font=new Font("Microsoft YaHei UI",19,FontStyle.Bold),ForeColor=Color.FromArgb(23,66,46),Margin=new Padding(0,0,18,0) });
             connection.AutoSize=true;connection.Margin=new Padding(3,13,0,0);title.Controls.Add(connection);layout.Controls.Add(title,0,0);
@@ -74,6 +83,7 @@ namespace Othello.Basic {
             serial.Controls.Add(Label("方式"));serial.Controls.Add(mode);serial.Controls.Add(Label("端口"));serial.Controls.Add(ports);serial.Controls.Add(Label("波特率 (Bd)"));serial.Controls.Add(baud);serial.Controls.Add(Label("数据位"));serial.Controls.Add(bits);serial.Controls.Add(Label("校验"));serial.Controls.Add(parity);serial.Controls.Add(Label("停止位"));serial.Controls.Add(stops);
             Button(connect,"连接",OnConnect);Button(disconnect,"断开",delegate { Disconnect(); });Button(refresh,"刷新棋盘",delegate { Safe(session.Refresh); });
             serial.Controls.Add(connect);serial.Controls.Add(disconnect);serial.Controls.Add(refresh);layout.Controls.Add(serial,0,1);
+            layout.Controls.Add(BuildGameControls(),0,2);
             TableLayoutPanel body=new TableLayoutPanel { Dock=DockStyle.Fill,ColumnCount=2,RowCount=1,Margin=new Padding(0,10,0,0) };
             body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,300));board.Dock=DockStyle.Fill;body.Controls.Add(board,0,0);
             TableLayoutPanel sidebar=new TableLayoutPanel { Dock=DockStyle.Fill,RowCount=8,ColumnCount=1,Padding=new Padding(12,0,0,0) };
@@ -85,11 +95,37 @@ namespace Othello.Basic {
             row.ValueChanged+=delegate { board.Row=(int)row.Value-1;board.Invalidate(); };col.ValueChanged+=delegate { board.Column=(int)col.Value-1;board.Invalidate(); };
             board.Selected+=delegate(int r,int c) { row.Value=r+1;col.Value=c+1; };
             Button(move,"确认落子",delegate { Safe(delegate { session.Move((int)row.Value-1,(int)col.Value-1); }); });move.Dock=DockStyle.Fill;sidebar.Controls.Add(move,0,4);
-            Button(newSimulation,"新模拟局",delegate { Disconnect();OnConnect(this,EventArgs.Empty); });newSimulation.Dock=DockStyle.Fill;sidebar.Controls.Add(newSimulation,0,5);
+            var editTools=new FlowLayoutPanel { Dock=DockStyle.Fill,WrapContents=false };
+            Combo(piece,66,new[]{"空格","黑棋","白棋"},1);
+            Button(editCell,"编辑选中格",delegate { Safe(delegate { session.Edit((int)row.Value-1,(int)col.Value-1,piece.SelectedIndex); }); });
+            editTools.Controls.Add(piece); editTools.Controls.Add(editCell); sidebar.Controls.Add(editTools,0,5);
             log.Multiline=true;log.ReadOnly=true;log.ScrollBars=ScrollBars.Vertical;log.Dock=DockStyle.Fill;log.Font=new Font("Consolas",8);log.BackColor=Color.White;sidebar.Controls.Add(log,0,6);
             Button(finish,"结束上位机",delegate { Shutdown(); });finish.Dock=DockStyle.Fill;sidebar.Controls.Add(finish,0,7);
-            body.Controls.Add(sidebar,1,0);layout.Controls.Add(body,0,2);
-            layout.Controls.Add(new Label { Text="先选格子，再确认落子。离线模拟可独立验证；实机连接仍需下位机固件和硬件联调。",AutoSize=true,ForeColor=Color.DimGray,Dock=DockStyle.Fill,Padding=new Padding(0,7,0,0) },0,3);
+            body.Controls.Add(sidebar,1,0);layout.Controls.Add(body,0,3);
+            layout.Controls.Add(new Label { Text="选中格子后确认落子。结算后可在「回放与排行」查看棋局。",AutoSize=true,ForeColor=Color.DimGray,Dock=DockStyle.Fill,Padding=new Padding(0,6,0,0) },0,4);
+        }
+        Control BuildGameControls() {
+            var controls=new TableLayoutPanel { Dock=DockStyle.Fill,ColumnCount=1,RowCount=2,BackColor=Color.White };
+            var actions=new FlowLayoutPanel { Dock=DockStyle.Fill,WrapContents=false };
+            Button(startGame,"开始",delegate { Command(GameControl.Start); });
+            Button(pauseGame,"暂停",delegate { Command(GameControl.Pause); });
+            Button(resumeGame,"继续",delegate { Command(GameControl.Resume); });
+            Button(endGame,"结束对局",delegate { Command(GameControl.End); });
+            Button(restartGame,"重开本局",delegate { Command(GameControl.Restart); });
+            Button(toggleEdit,"开启编辑",delegate { Command(GameControl.Edit); });
+            Button(history,"回放与排行",delegate { Safe(delegate { using(var window=new ArchiveWindow(archive)) window.ShowDialog(this); }); });
+            actions.Controls.AddRange(new Control[]{startGame,pauseGame,resumeGame,endGame,restartGame,toggleEdit,history});
+            var settings=new FlowLayoutPanel { Dock=DockStyle.Fill,WrapContents=false };
+            Combo(gameMode,73,new[]{"普通","闯关","计时"},0);
+            limit.Margin=new Padding(2,8,2,0);
+            Button(applyMode,"设定模式",delegate { Safe(delegate { session.Control(GameControl.Mode,(GameMode)gameMode.SelectedIndex,(int)limit.Value); }); });
+            settings.Controls.AddRange(new Control[]{Label("模式"),gameMode,Label("时长 (s)"),limit,applyMode,scoring});
+            controls.Controls.Add(actions,0,0); controls.Controls.Add(settings,0,1);
+            controls.RowStyles.Add(new RowStyle(SizeType.Percent,50)); controls.RowStyles.Add(new RowStyle(SizeType.Percent,50));
+            return controls;
+        }
+        void Command(GameControl command) {
+            Safe(delegate { session.Control(command); });
         }
         public void Start() {
             stopped=false;
@@ -132,17 +168,35 @@ namespace Othello.Basic {
             if(IsDisposed) return;
             if(InvokeRequired) { if(IsHandleCreated) BeginInvoke(new Action(Render));return; }
             bool connected=session.Connected;
+            BoardState state=session.State;
+            MatchState match=state==null?null:state.Match;
+            if(!connected) archive.ResetConnection();
+            string archiveError=null;
+            try { archive.Observe(state,mode.SelectedIndex==0); }
+            catch(IOException error) { archiveError=error.Message; }
+            catch(UnauthorizedAccessException error) { archiveError=error.Message; }
             mode.Enabled=!connected&&!connecting&&active;ports.Enabled=!connected&&!connecting&&active&&mode.SelectedIndex==1;
             baud.Enabled=bits.Enabled=parity.Enabled=stops.Enabled=!connected&&!connecting&&active;
             connect.Enabled=active&&!connected&&!connecting;disconnect.Enabled=active&&(connected||connecting);refresh.Enabled=active&&connected&&!session.Waiting;
-            move.Enabled=active&&connected&&!session.Waiting&&session.State!=null&&session.State.Status==0;
-            newSimulation.Enabled=active&&!connecting&&mode.SelectedIndex==0;finish.Enabled=active;
+            move.Enabled=active&&connected&&!session.Waiting&&state!=null&&state.Status==0&&(match==null||match.Phase==GamePhase.Running);
+            finish.Enabled=active; history.Enabled=active;
+            bool ready=active&&connected&&!session.Waiting&&match!=null;
+            startGame.Enabled=ready&&match.Phase==GamePhase.Finished;
+            pauseGame.Enabled=ready&&match.Phase==GamePhase.Running;
+            resumeGame.Enabled=ready&&match.Phase==GamePhase.Paused;
+            endGame.Enabled=toggleEdit.Enabled=ready&&match.Phase!=GamePhase.Finished;
+            restartGame.Enabled=applyMode.Enabled=gameMode.Enabled=limit.Enabled=ready;
+            editCell.Enabled=piece.Enabled=ready&&match.Phase==GamePhase.Editing;
+            toggleEdit.Text=match!=null&&match.Phase==GamePhase.Editing?"退出编辑":"开启编辑";
             connection.Text=connecting?"正在连接…":!active?"请运行 Main.vi":connected?(mode.SelectedIndex==0?"离线模拟 / 已连接":"真实串口 / 已连接"):"未连接";
             connection.ForeColor=connected?Color.FromArgb(22,109,74):Color.DimGray;
             board.Board=session.State;board.Invalidate();
-            status.Text=session.Message;
+            status.Text=archiveError==null?session.Message:session.Message+Environment.NewLine+"棋局保存失败："+archiveError;
             turn.Text=session.State==null?"当前回合：—":session.State.Status==1?"本局已结束":"当前回合："+(session.State.Turn==1?"黑方":"白方");
             counts.Text=session.State==null?"黑  —    白  —":"黑  "+session.State.Black+"    白  "+session.State.White+"    v"+session.State.Revision;
+            scoring.Text=match==null?"本局 — 分  总分 — 分":GameArchive.ModeName(match.Mode)+" · 本局 "+state.Black+" 分  总分 "+match.Total+" 分"+
+                (match.Mode==GameMode.Timed?"  剩余 "+(match.RemainingMs/1000.0).ToString("F1")+" s":match.Mode==GameMode.Challenge?"  连败 "+match.Losses+" 局":"")+
+                (match.Edited?"  已编辑":"");
             string text=session.LogText;if(log.Text!=text) { log.Text=text;log.SelectionStart=log.TextLength;log.ScrollToCaret(); }
         }
         protected override void Dispose(bool disposing) { if(disposing) { connectionAttempt++;stopped=true;timer.Dispose();session.Dispose(); }base.Dispose(disposing); }

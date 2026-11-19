@@ -1048,6 +1048,36 @@
             
           </Files>
         </Group>
+        <Group>
+          <GroupName>Application/Othello</GroupName>
+          <Files>
+            <File>
+              <FileName>app_basic.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Core/Src/app_basic.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_platform.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Core/Src/app_platform.c</FilePath>
+            </File>
+            <File>
+              <FileName>othello.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Core/Src/othello.c</FilePath>
+            </File>
+            <File>
+              <FileName>ot_match.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Core/Src/ot_match.c</FilePath>
+            </File>
+            <File>
+              <FileName>ot_protocol.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Core/Src/ot_protocol.c</FilePath>
+            </File>
+          </Files>
+        </Group>
       </Groups>
           
     </Target>

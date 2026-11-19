@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace Othello.Basic {
     public sealed class HostSession : IDisposable {
@@ -8,7 +9,9 @@ namespace Othello.Basic {
         readonly Queue<string> log=new Queue<string>();
         uint nextSequence=1, pending;
         DateTime deadline;
+        DateTime nextPoll;
         int generation;
+        bool basicProtocol;
         public BoardState State { get; private set; }
         public bool Connected { get { return transport!=null; } }
         public bool Waiting { get { return pending!=0; } }
@@ -34,7 +37,8 @@ namespace Othello.Basic {
                 transport=device;
                 device.Received+=delegate(string chunk) { Dispatch(delegate { if(session==generation && transport==device) lines.Feed(chunk); }); };
                 device.Failed+=delegate(string error) { Dispatch(delegate { if(session==generation) Report(error); }); };
-                State=null; pending=0; lines.Clear(); Report("已连接，正在读取完整棋盘"); Refresh();
+                State=null; pending=0; basicProtocol=false; nextPoll=DateTime.UtcNow; lines.Clear();
+                Report("已连接，正在读取完整棋盘"); Refresh();
             } catch { device.Dispose(); transport=null; throw; }
         }
         public void Disconnect() {
@@ -48,39 +52,82 @@ namespace Othello.Basic {
             if(pending!=0) throw new InvalidOperationException("正在等待下位机确认，请勿重复发送");
             uint seq=nextSequence++; if(nextSequence==0) nextSequence=1;
             pending=seq; deadline=DateTime.UtcNow.AddMilliseconds(1500);
-            string frame=Protocol.Frame(body.Replace("{seq}",seq.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+            string frame=Protocol.Frame(body.Replace("{seq}",seq.ToString(CultureInfo.InvariantCulture)));
             AddLog("TX "+frame.TrimEnd());
             try { transport.Send(frame); Notify(); } catch { pending=0; throw; }
         }
-        public void Refresh() { Request("@GET,{seq}"); }
+        public void Refresh() { Request(basicProtocol ? "@GET,{seq}" : "@SYNC,{seq}"); }
         public void Move(int row,int col) {
             if(State==null) throw new InvalidOperationException("尚未同步棋盘");
             if(State.Status!=0) throw new InvalidOperationException("本局已结束");
-            if(row<0||row>7||col<0||col>7) throw new ArgumentOutOfRangeException("row","坐标必须在 1–8");
-            Request("@MOVE,{seq},"+State.Revision+","+row+","+col);
+            if(State.Match!=null && State.Match.Phase!=GamePhase.Running) throw new InvalidOperationException("当前状态不能落子");
+            CheckCoordinates(row,col);
+            Request(string.Format(CultureInfo.InvariantCulture,"{0},{{seq}},{1},{2},{3}",basicProtocol?"@MOVE":"@PLAY",State.Revision,row,col));
         }
-        public void Tick() { if(pending!=0 && DateTime.UtcNow>=deadline) { pending=0; Report("等待响应超时：未自动重发落子，请刷新状态后重试"); } }
+        static void CheckCoordinates(int row,int col) {
+            if(row<0||row>7||col<0||col>7) throw new ArgumentOutOfRangeException("row","坐标必须在 1–8");
+        }
+        void RequireAdvanced() {
+            if(State==null || State.Match==null) throw new InvalidOperationException("请连接支持进阶的下位机");
+        }
+        public void Control(GameControl command, GameMode mode=GameMode.Casual, int limitSeconds=0) {
+            RequireAdvanced();
+            Request(string.Format(CultureInfo.InvariantCulture,"@CTL,{{seq}},{0},{1},{2},{3}",
+                State.Revision,command.ToString().ToUpperInvariant(),(int)mode,limitSeconds));
+        }
+        public void Edit(int row,int col,int piece) {
+            RequireAdvanced();
+            CheckCoordinates(row,col);
+            if(piece<0||piece>2) throw new ArgumentOutOfRangeException("piece");
+            Request(string.Format(CultureInfo.InvariantCulture,"@EDIT,{{seq}},{0},{1},{2},{3}",State.Revision,row,col,piece));
+        }
+        public void Tick() {
+            DateTime now=DateTime.UtcNow;
+            if(pending!=0 && now>=deadline) { pending=0; Report("等待响应超时，刷新后可核对当前棋盘"); }
+            if(Connected && pending==0 && State!=null && State.Match!=null && State.Match.Mode==GameMode.Timed &&
+               State.Match.Phase==GamePhase.Running && now>=nextPoll) {
+                nextPoll=now.AddMilliseconds(500);
+                try { Refresh(); } catch(Exception error) { Report(error.Message); }
+            }
+        }
         void OnLine(string line) {
             AddLog("RX "+line.TrimEnd());
             try {
                 string[] fields=Protocol.Fields(line);
-                if(fields[0]=="@STATE") {
+                if(fields[0]=="@GAME" || fields[0]=="@STATE") {
                     BoardState state=Protocol.ParseState(fields);
                     if(state.Sequence!=0 && state.Sequence!=pending) { Report("忽略不属于当前请求的 STATE"); return; }
                     if(State!=null && state.Revision<State.Revision) { Report("忽略过期棋盘版本；重连后重新同步"); return; }
+                    if(state.Match==null && State!=null && State.Match!=null) return;
                     State=state;
+                    basicProtocol=state.Match==null;
                     if(state.Sequence==pending) pending=0;
-                    Message=state.Status==1 ? "本局结束（一方无合法位置）" : "已同步，等待"+(state.Turn==1?"黑方":"白方")+"落子";
+                    Message=Describe(state);
                     Notify();
                 } else if(fields[0]=="@ERROR" && fields.Length==3) {
                     uint seq=Protocol.Number(fields[1]);
                     if(seq!=pending && seq!=0) { Report("忽略旧请求 ERROR"); return; }
-                    pending=0;
                     string reason=fields[2];
+                    if(seq==0 && pending!=0) { Report("下位机报告无序号错误："+reason); return; }
+                    pending=0;
+                    if(reason=="COMMAND" && State==null && !basicProtocol) { basicProtocol=true; Refresh(); return; }
                     Report(reason=="ILLEGAL"?"非法落子：必须至少翻转对方 1 枚棋子":reason=="STALE"?"版本已过期，正在刷新棋盘":"下位机错误："+reason);
                     if(reason=="STALE") Refresh();
                 } else Report("忽略未知或格式错误的响应");
             } catch(FormatException ex) { Report(ex.Message); }
+        }
+        static string Describe(BoardState state) {
+            if(state.Match!=null) {
+                switch(state.Match.Result) {
+                    case GameResult.Win: return "WIN · 闯关总分恰好 188 分";
+                    case GameResult.Over: return "OVER · 连续输 2 局";
+                    case GameResult.Time: return "计时结束，已结算";
+                    case GameResult.Exit: return "已结束退出，本局不计分";
+                }
+                if(state.Match.Phase==GamePhase.Paused) return "已暂停";
+                if(state.Match.Phase==GamePhase.Editing) return "正在编辑棋盘，普通落子已暂停";
+            }
+            return state.Status==1 ? "本局结束（一方无合法位置）" : "已同步，等待"+(state.Turn==1?"黑方":"白方")+"落子";
         }
         public void Dispose() { Disconnect(); }
     }
