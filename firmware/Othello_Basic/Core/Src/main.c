@@ -113,6 +113,9 @@ int main(void)
     /* USER CODE BEGIN 3 */
     uint32_t now = HAL_GetTick();
     char key;
+
+    /* V1/V2 share this dispatch loop. AppBasic and ot_move handle turns and
+       game-over input. AppPlatform handles the physical LED layout. */
     AppPlatform_Tick(now);
     if (!frame_pending)
       frame_pending = AppPlatform_ReadFrame(pending_frame, sizeof(pending_frame));

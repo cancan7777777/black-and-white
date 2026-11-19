@@ -7,7 +7,7 @@
 - Core/Src/main.c：CubeMX 初始化、主循环调度、唯一一组 HAL 回调转发。应用内容均在 USER CODE 区域。
 - app_basic.c/.h：私有棋盘、键盘操作、协议调用、版本与状态通知；不包含 HAL。
 - app_platform.c/.h：UART RX 环形缓冲/TX 有界帧队列、键盘扫描/消抖、PWM/DMA 点阵；不直接修改棋盘。
-- othello.c/.h、ot_protocol.c/.h：原包的规则/CRC/GET/MOVE/STATE/ERROR 核心，原样复用。
+- othello.c/.h、ot_protocol.c/.h：规则和 CRC/GET/MOVE/STATE/ERROR 核心，落子后按 V2 检查下一行棋方。
 - application_sources.txt：应用源文件登记表；tools/update-app-sources.ps1 和 CubeMX 生成脚本按登记表加入 MDK 工程，避免重新生成后源文件漏编译。
 
 ```mermaid
@@ -26,11 +26,11 @@ flowchart LR
 
 - 上电初始化中心 2 黑 2 白、黑先手，串口主动排队发送 seq=0 的 STATE。
 - 2/8/4/6 移动光标，5 合法落子，0 重新开始；其余键保留。长按不重复落子，多键按下后必须完全释放才允许下一次按键。
-- 合法落子至少翻 1 子；任一方无合法位置即结束，维持任务书字面规则，不静默引入 pass。
+- 合法落子至少翻 1 子。落子后只检查下一行棋方，该方无合法位置即结束。终局后只响应重开键 `0`。
 - GET/MOVE 请求先经现有 CRC 和 revision 校验。TX 队列满时暂存完整输入帧，不先执行落子再等回复。
 - 物理落子/本局重开后推送 STATE；光标移动仅刷新 LED。重开时 revision 继续递增，避免旧请求刚好撞上 revision=1。
 - RX 中断仅收字节/重装接收；业务处理、发送排队和 DMA 启停在主循环。RX 过载/超长行丢弃到 LF 恢复，不把残缺帧当命令。
-- 点阵采用低亮度自定义黑棋蓝、白棋灰白、光标琥珀闪烁，GRB，800 kHz，DMA 缓冲区与待显示状态分离；默认蛇形映射可以通过 app_config.h 修改。
+- 点阵默认直排，黑棋为蓝色，白棋为白色。光标在空格上闪红色，在棋子上提高原色亮度。GRB、800 kHz，DMA 缓冲区与待显示状态分离。面板映射可在 app_config.h 切换。
 
 ## 给未来创新功能的硬性边界
 

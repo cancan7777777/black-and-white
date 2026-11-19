@@ -23,6 +23,25 @@ static void observer(const AppBasicSnapshot *s, AppBasicSource source, void *con
 }
 static void frame(const char *body, char *out)
 { (void)snprintf(out, OT_LINE_MAX, "%s,%04X\n", body, (unsigned)ot_crc(body, strlen(body))); }
+
+static void test_next_player_game_over(void)
+{
+    OtGame game = { 0 };
+    game.board[0] = OT_WHITE;
+    game.board[1] = OT_BLACK;
+    game.board[3] = OT_BLACK;
+    game.board[4] = OT_WHITE;
+    game.turn = OT_BLACK;
+    game.status = OT_PLAY;
+
+    assert(ot_move(&game, 0u, 5u));
+    assert(!ot_has_move(&game, OT_BLACK) && ot_has_move(&game, OT_WHITE));
+    assert(game.status == OT_PLAY && game.turn == OT_WHITE);
+    assert(ot_move(&game, 0u, 2u));
+    assert(ot_has_move(&game, OT_WHITE) && !ot_has_move(&game, OT_BLACK));
+    assert(game.status == OT_OVER && game.turn == 0u);
+}
+
 int main(void)
 {
     AppBasicPorts ports = { can_send, send_frame, render, 0 };
@@ -30,6 +49,7 @@ int main(void)
     unsigned contexts[4] = { 0u, 1u, 2u, 3u }, i, moves;
     int slots[4];
     char input[OT_LINE_MAX], body[96];
+    test_next_player_game_over();
     AppBasic_Init(&ports);
     AppBasic_GetSnapshot(&before);
     assert(before.game.black == 2u && before.game.white == 2u);
@@ -79,9 +99,19 @@ int main(void)
     (void)snprintf(body, sizeof(body), "@MOVE,55,%lu,0,0", (unsigned long)after.game.revision);
     frame(body, input);
     assert(AppBasic_ProcessFrame(input) && strstr(sent, ",ILLEGAL,"));
+    AppBasic_HandleKey('2');
+    AppBasic_HandleKey('6');
+    AppBasic_HandleKey('5');
+    AppBasic_GetSnapshot(&before);
+    assert(before.cursor_row == after.cursor_row && before.cursor_col == after.cursor_col);
+    assert(before.game.revision == after.game.revision && before.game.status == OT_OVER);
+    AppBasic_HandleKey('0');
+    AppBasic_GetSnapshot(&before);
+    assert(before.game.revision == after.game.revision + 1u);
+    assert(before.game.status == OT_PLAY && before.game.black == 2u && before.game.white == 2u);
     AppBasic_Tick(0xffffffffu);
     AppBasic_Tick(5u);
     assert(renders >= 2u);
-    puts("PASS: opening, snapshots, backpressure, protocol, stale/CRC/unknown commands, reset, observers, reentry, full game, tick wrap");
+    puts("PASS: opening, snapshots, backpressure, protocol, reset, observers, full game, next-player loss, terminal key lockout, tick wrap");
     return 0;
 }

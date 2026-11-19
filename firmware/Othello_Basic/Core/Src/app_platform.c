@@ -193,10 +193,21 @@ static void refresh_led(uint32_t now)
         index = row * 8u + col;
         piece = desired_board[index];
         red = green = blue = 0u;
-        if (piece == OT_BLACK) { green = 1u; blue = 6u; }
-        if (piece == OT_WHITE) red = green = blue = 6u;
+        /* Strong contrast pair: black = deep blue, white = near-white. The old
+           (0,1,6)/(6,6,6) pair read as "blue vs light blue" on the matrix. */
+        if (piece == OT_BLACK) { blue = APP_LED_PIECE_LEVEL; }
+        if (piece == OT_WHITE) red = green = blue = APP_LED_PIECE_LEVEL;
+        /* Cursor: on an empty cell it paints the cursor colour; on an occupied cell it
+           brightens the stone in its own hue instead of replacing the colour, so the
+           stone keeps its identity and the cursor stays visible. */
         if (desired_cursor && row == desired_row && col == desired_col) {
-            red = 6u; green = 3u; blue = 0u;
+            if (piece == OT_EMPTY) {
+                red = APP_LED_CURSOR_LEVEL;
+            } else if (piece == OT_BLACK) {
+                blue = APP_LED_CURSOR_LEVEL;
+            } else {
+                red = green = blue = APP_LED_CURSOR_LEVEL;
+            }
         }
         color = ((uint32_t)green << 16) | ((uint32_t)red << 8) | blue;
         for (bit = 0u; bit < 24u; ++bit)

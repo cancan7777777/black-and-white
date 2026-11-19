@@ -80,6 +80,9 @@ void AppBasic_HandleKey(char key)
     uint8_t old_row = app.row, old_col = app.col;
     uint32_t revision;
     if (app.notifying) return;
+    /* Once the game is over only the reset key is honoured, so a finished game cannot be
+       nudged back into play by the cursor keys. */
+    if (app.game.status != OT_PLAY && key != '0') return;
     switch (key) {
     case '2': if (app.row) --app.row; break;
     case '8': if (app.row < 7u) ++app.row; break;

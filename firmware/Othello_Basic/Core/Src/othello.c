@@ -27,7 +27,8 @@ uint8_t ot_move(OtGame *g,uint8_t r,uint8_t c){
     for(d=0;d<8;d++)for(j=1;j<=lens[d];j++)g->board[(r+(int)j*dr[d])*8+c+(int)j*dc[d]]=p;
     g->black=0;g->white=0;for(i=0;i<64;i++){g->black+=(g->board[i]==1);g->white+=(g->board[i]==2);}
     g->turn=(uint8_t)(3-p);g->revision++;
-    /* Course brief: either player has no legal move => end. Not standard pass rule. */
-    if(!ot_has_move(g,OT_BLACK)||!ot_has_move(g,OT_WHITE)){g->status=OT_OVER;g->turn=0;}
+    /* Only the side to move is tested: if it has no legal move it loses and the game ends.
+       The side that just moved must never be judged here - it already had its turn. */
+    if(!ot_has_move(g,g->turn)){g->status=OT_OVER;g->turn=0;}
     return 1;
 }
