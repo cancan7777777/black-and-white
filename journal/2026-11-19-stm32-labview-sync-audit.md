@@ -29,3 +29,8 @@
 
 - 用户接入硬件后截图仍显示「离线模拟 / 已连接」。核对 `OthelloPanel.Render`，连接中锁定方式与串口参数，只有断开且选中「真实串口」才开放端口框。
 - 只读查询 `SerialPort.GetPortNames()` 和 `Get-PnpDevice -Class Ports -PresentOnly`，确认 Windows 识别 `USB-SERIAL CH340 (COM6)`，状态 `OK`。操作顺序为「断开 → 方式选真实串口 → 端口选 COM6 → 115200 8N1 → 连接」。确认连通以收到 STM32 棋盘帧为准。保留用户当前模拟对局，未切换 VI 或打开实体串口。
+
+## 同日 · 区分串口连接与烧录成功
+
+- 用户询问点击「连接」或文件链接后的烧录状态。核对 `build/keil-build.log` 可见编译与 HEX 生成成功，项目目录没有找到实板下载校验日志。LabVIEW 的「连接」打开 COM 口并读出板上现有固件的状态。打开工程或 HEX 文件只进入对应软件或查看文件。
+- 烧录需由 Keil 的 Flash → Download 或现有烧录软件执行，以下载及校验成功为准。启动后真实串口收到 `RX @GAME` 可验证进阶通信固件正在运行。当前实板写入结果尚待确认。
