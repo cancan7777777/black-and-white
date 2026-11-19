@@ -1,5 +1,6 @@
 #include "app_platform.h"
 #include "app_config.h"
+#include "app_led_heart.h"
 #include "ot_protocol.h"
 #include "tim.h"
 #include "usart.h"
@@ -26,8 +27,9 @@ static const char keymap[16] = { '1','2','3','A','4','5','6','B','7','8','9','C'
 static union { uint32_t alignment; uint16_t words[LED_WORDS]; } pwm;
 static uint8_t desired_board[64], desired_row, desired_col, desired_cursor, led_dirty;
 static OtResult desired_result;
-static uint32_t marquee_at;
-static unsigned marquee_column;
+static uint8_t desired_winner, marquee_visible;
+static uint32_t result_revision, heart_at, marquee_at;
+static unsigned heart_lit, marquee_column;
 static volatile uint8_t led_busy, led_done, led_fault;
 static uint32_t led_started;
 
@@ -157,15 +159,20 @@ char AppPlatform_TakeKey(void)
 
 void AppPlatform_Render(const AppBasicSnapshot *snapshot, uint8_t cursor, void *context)
 {
+    uint8_t winner = app_led_winner(&snapshot->game, snapshot->result);
     (void)context;
     memcpy(desired_board, snapshot->game.board, sizeof(desired_board));
     desired_row = snapshot->cursor_row;
     desired_col = snapshot->cursor_col;
     desired_cursor = cursor;
-    if (desired_result != snapshot->result) {
+    if (desired_result != snapshot->result || (winner && result_revision != snapshot->game.revision)) {
         desired_result = snapshot->result;
+        desired_winner = winner;
+        result_revision = snapshot->game.revision;
+        heart_at = HAL_GetTick();
+        heart_lit = 0u;
+        marquee_visible = 0u;
         marquee_column = 0u;
-        marquee_at = HAL_GetTick();
     }
     led_dirty = 1u; /* Coalesce changes; never modify an active DMA buffer. */
 }
@@ -200,7 +207,20 @@ static void refresh_led(uint32_t now)
     unsigned pixel, row, col, index, bit, word;
     uint32_t color;
     uint8_t red, green, blue, piece;
-    uint8_t marquee = (uint8_t)(desired_result == OT_RESULT_WIN || desired_result == OT_RESULT_OVER);
+    uint32_t heart_elapsed = now - heart_at;
+    uint8_t marquee = (uint8_t)((desired_result == OT_RESULT_WIN || desired_result == OT_RESULT_OVER) &&
+                              (!desired_winner || heart_elapsed >= APP_LED_HEART_DURATION_MS));
+    uint8_t heart = (uint8_t)(desired_winner && !marquee);
+    if (marquee && !marquee_visible) {
+        marquee_visible = 1u;
+        marquee_at = now;
+        marquee_column = 0u;
+        led_dirty = 1u;
+    }
+    if (heart) {
+        unsigned lit = app_led_heart_visible(heart_elapsed);
+        if (heart_lit != lit) { heart_lit = lit; led_dirty = 1u; }
+    }
     if (marquee && (uint32_t)(now - marquee_at) >= 150u) {
         unsigned columns = desired_result == OT_RESULT_WIN ? 21u : 25u;
         marquee_at = now;
@@ -221,8 +241,8 @@ static void refresh_led(uint32_t now)
         row = pixel / 8u; col = pixel % 8u;
         if (APP_LED_SERPENTINE && (row & 1u)) col = 7u - col;
         index = row * 8u + col;
-        piece = desired_board[index];
-        selected = (uint8_t)(desired_cursor && row == desired_row && col == desired_col);
+        piece = heart ? (app_led_heart_pixel(row, col, heart_lit) ? desired_winner : OT_EMPTY) : desired_board[index];
+        selected = (uint8_t)(!heart && desired_cursor && row == desired_row && col == desired_col);
         level = selected ? APP_LED_CURSOR_LEVEL : APP_LED_PIECE_LEVEL;
         red = green = blue = 0u;
         if (piece == OT_BLACK) {          /* Orange */

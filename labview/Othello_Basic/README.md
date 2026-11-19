@@ -22,6 +22,8 @@
 
 `Main.vi` 是可打开的 VI。`bin/Othello.Basic.dll` 是由 LabVIEW 的 .NET 容器加载的组件，双击 DLL 或在 LabVIEW 的「文件 → 打开」中选择它会报文件类型错误。
 
+新版面板顶部可设置串口和执行对局操作，右侧集中显示回合、得分、模式和落子按钮。点击左侧棋盘或调节右侧行列选中棋格，再点「确认落子」。右侧闯关计分显示关卡、系数、本关得分和总分。
+
 1. 在 `Main.vi` 的**前面板**右键点击灰色 .NET 容器，选择「插入 .NET 控件」。如果还没有容器，从「控件选板 → .NET 与 ActiveX → .NET 容器」放置一个。
 2. 在「选择 .NET 控件」对话框中点「浏览」，选择本工程的 `bin/Othello.Basic.dll`。
 3. 在控件列表中选 `OthelloPanel`（完整类型名 `Othello.Basic.OthelloPanel`），点「确定」。绑定成功后容器里会显示棋盘控件。

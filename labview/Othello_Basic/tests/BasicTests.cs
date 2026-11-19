@@ -48,6 +48,11 @@ class BasicTests {
             var board = FindControl<BoardView>(panel, control => true);
             Check(panel.IsHandleCreated && board != null && connect != null && move != null && finish != null,
                 "embedded control instantiates the board and actions");
+            panel.Size=panel.MinimumSize;
+            Check(connect.Height >= 40 && move.Height >= 40 && finish.Height >= 40,
+                "primary actions retain large hit areas at the minimum panel size");
+            Check(panel.ClientRectangle.Contains(panel.RectangleToClient(finish.Parent.RectangleToScreen(finish.Bounds))),
+                "exit remains fully visible at the minimum panel size");
             Check(panel.Stopped && !connect.Enabled && !move.Enabled, "controls are disabled until VI calls Start");
             panel.Start();
             connect.PerformClick();

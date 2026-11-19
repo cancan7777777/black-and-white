@@ -1,5 +1,6 @@
 #include "ot_match.h"
 #include "app_basic.h"
+#include "app_led_heart.h"
 #include "ot_protocol.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -156,6 +157,43 @@ static void test_stage_scoring(void)
     check(m.total==188u && m.total_half_point==1u && m.result==OT_RESULT_WIN,"188.5 also wins");
 }
 
+static void test_winning_heart(void)
+{
+    OtGame game = {0};
+    unsigned lit, row, col;
+    game.black = 34u;
+    game.white = 30u;
+    check(app_led_winner(&game, OT_RESULT_NONE) == OT_EMPTY, "running game has no winner");
+    game.status = OT_OVER;
+    check(app_led_winner(&game, OT_RESULT_BOARD) == OT_BLACK, "board result uses black's color");
+    check(app_led_winner(&game, OT_RESULT_WIN) == OT_BLACK, "WIN still has a heart before the marquee");
+    check(app_led_winner(&game, OT_RESULT_EXIT) == OT_EMPTY, "early exit skips the heart");
+    game.black = 30u;
+    check(app_led_winner(&game, OT_RESULT_BOARD) == OT_EMPTY, "draw skips the heart");
+    game.white = 34u;
+    check(app_led_winner(&game, OT_RESULT_TIME) == OT_WHITE, "timed result uses white's color");
+    check(app_led_winner(&game, OT_RESULT_OVER) == OT_WHITE, "OVER still has a heart before the marquee");
+
+    for (lit = 0u; lit <= APP_LED_HEART_PIXELS; ++lit) {
+        unsigned count = 0u;
+        for (row = 0u; row < 8u; ++row) {
+            for (col = 0u; col < 8u; ++col) {
+                uint8_t pixel = app_led_heart_pixel(row, col, lit);
+                count += pixel;
+                if (lit != 0u && app_led_heart_pixel(row, col, lit - 1u))
+                    check(pixel, "each revealed LED stays lit");
+                if (lit == APP_LED_HEART_PIXELS)
+                    check(pixel == app_led_heart_pixel(row, 7u - col, lit), "complete heart is symmetric");
+            }
+        }
+        check(count == lit, "each step lights exactly one new LED");
+    }
+    check(app_led_heart_visible(0u) == 1u && app_led_heart_visible(44u) == 1u &&
+          app_led_heart_visible(45u) == 2u, "45 ms between LEDs");
+    check(app_led_heart_visible(1755u) == 40u && app_led_heart_visible(2455u) == 40u,
+          "full heart holds after the last LED");
+}
+
 int main(void)
 {
     OtMatch m;
@@ -174,6 +212,7 @@ int main(void)
     test_stage_scoring();
     exercise_hardware_path();
     prove_natural_win();
-    puts("PASS native match boundaries");
+    test_winning_heart();
+    puts("PASS native match and winning LED heart");
     return 0;
 }
