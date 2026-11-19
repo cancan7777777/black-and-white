@@ -39,3 +39,8 @@
 
 - 用户指定使用 ATK-XISP，在查找时未看到 HEX。核对 Keil 的 `OutputDirectory` 和 `CreateHexFile`，确认进阶版实物固件已输出到 `firmware/Othello_Basic/MDK-ARM/Othello_Basic/Othello_Basic.hex`。项目的 `.gitignore` 将该输出目录排除，GitHub 源码不会包含此构建产物。
 - 复制可直接选取的本地文件 `build/Othello_Advanced.hex`。源文件与副本的 SHA-256 相同，文件为 43,947 字节，979 条 Intel HEX 记录的记录长度和校验和均通过。ATK-XISP 的[官方说明](https://www.openedv.com/docs/tool/ruanjian/ATK-XISP.html)确认支持 HEX 下载和逐字节校验。本轮提供文件，实板烧录仍待确认。
+
+## 同日 · ATK-XISP「关闭串口」提示核查
+
+- 用户询问「关闭串口」提示。没有截图或提示前后的日志，区分按钮文字与日志。作为切换按钮时，它通常表示可执行关闭操作，端口已经打开。作为日志时，它只说明程序释放了端口，烧录结果看此前的编程及校验提示。
+- Windows 再次确认 `USB-SERIAL CH340 (COM6)` 状态 `OK`。如提示端口打开失败或被占用，先释放 LabVIEW 的连接，再在 ATK-XISP 选择 COM6。设备枚举只能验证转换器，实板烧录状态仍待确认。
