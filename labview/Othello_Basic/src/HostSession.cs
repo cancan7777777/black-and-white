@@ -12,10 +12,11 @@ namespace Othello.Basic {
         DateTime nextPoll;
         int generation;
         string syncCommand;
-        bool pendingRefresh, computerSupported, stagesSupported;
+        bool pendingRefresh, computerSupported, stagesSupported, needsSync;
         public BoardState State { get; private set; }
         public bool Connected { get { return transport!=null; } }
         public bool Waiting { get { return pending!=0; } }
+        public bool Synchronized { get { return Connected && State!=null && !needsSync; } }
         public string Message { get; private set; }
         public event Action Changed;
         public Action<Action> Dispatch = delegate(Action action) { action(); };
@@ -37,14 +38,19 @@ namespace Othello.Basic {
             try {
                 transport=device;
                 device.Received+=delegate(string chunk) { Dispatch(delegate { if(session==generation && transport==device) lines.Feed(chunk); }); };
-                device.Failed+=delegate(string error) { Dispatch(delegate { if(session==generation) Report(error); }); };
-                State=null; pending=0; pendingRefresh=false; computerSupported=stagesSupported=false; syncCommand="@SYNC3";
+                device.Failed+=delegate(string error) { Dispatch(delegate {
+                    if(session!=generation) return;
+                    needsSync=true;
+                    Report(error);
+                }); };
+                State=null; pending=0; pendingRefresh=false; computerSupported=stagesSupported=false;
+                needsSync=true; syncCommand="@SYNC3";
                 nextPoll=DateTime.UtcNow; lines.Clear();
                 Report("已连接，正在读取完整棋盘"); Refresh();
             } catch { device.Dispose(); transport=null; throw; }
         }
         public void Disconnect() {
-            generation++; pending=0; State=null; lines.Clear();
+            generation++; pending=0; State=null; needsSync=true; lines.Clear();
             ITransport old=transport; transport=null;
             if(old!=null) old.Dispose();
             Message="未连接"; Notify();
@@ -56,11 +62,11 @@ namespace Othello.Basic {
             pending=seq; pendingRefresh=refreshing; deadline=DateTime.UtcNow.AddMilliseconds(1500);
             string frame=Protocol.Frame(body.Replace("{seq}",seq.ToString(CultureInfo.InvariantCulture)));
             AddLog("TX "+frame.TrimEnd());
-            try { transport.Send(frame); Notify(); } catch { pending=0; throw; }
+            try { transport.Send(frame); Notify(); } catch { pending=0; needsSync=true; throw; }
         }
         public void Refresh() { Request(syncCommand+",{seq}",true); }
         public void Move(int row,int col) {
-            if(State==null) throw new InvalidOperationException("尚未同步棋盘");
+            RequireSynchronized();
             if(State.Status!=0) throw new InvalidOperationException("本局已结束");
             if(State.Match!=null && State.Match.Phase!=GamePhase.Running) throw new InvalidOperationException("当前状态不能落子");
             if(State.ComputerTurn) throw new InvalidOperationException("请等待电脑走白");
@@ -70,8 +76,12 @@ namespace Othello.Basic {
         static void CheckCoordinates(int row,int col) {
             if(row<0||row>7||col<0||col>7) throw new ArgumentOutOfRangeException("row","坐标必须在 1–8");
         }
+        void RequireSynchronized() {
+            if(!Synchronized) throw new InvalidOperationException("棋盘尚未同步，请先刷新棋盘");
+        }
         void RequireAdvanced() {
-            if(State==null || State.Match==null) throw new InvalidOperationException("请连接支持进阶的下位机");
+            RequireSynchronized();
+            if(State.Match==null) throw new InvalidOperationException("请连接支持进阶的下位机");
         }
         public void Control(GameControl command, GameMode mode=GameMode.Casual, int limitSeconds=0) {
             RequireAdvanced();
@@ -86,7 +96,10 @@ namespace Othello.Basic {
         }
         public void Tick() {
             DateTime now=DateTime.UtcNow;
-            if(pending!=0 && now>=deadline) { pending=0; Report("等待响应超时，刷新后可核对当前棋盘"); }
+            if(pending!=0 && now>=deadline) {
+                pending=0;needsSync=true;
+                Report("等待棋盘同步超时，请刷新棋盘或核对串口设置");
+            }
             bool computer=State!=null && State.ComputerTurn;
             bool timed=State!=null && State.Match!=null && State.Match.Mode==GameMode.Timed && State.Match.Phase==GamePhase.Running;
             if(Connected && pending==0 && (computer || timed) && now>=nextPoll) {
@@ -101,14 +114,20 @@ namespace Othello.Basic {
                 if(fields[0]=="@GAME3" || fields[0]=="@GAME2" || fields[0]=="@GAME" || fields[0]=="@STATE") {
                     BoardState state=Protocol.ParseState(fields);
                     if(state.Sequence!=0 && state.Sequence!=pending) { Report("忽略不属于当前请求的 STATE"); return; }
-                    if(State!=null && state.Revision<State.Revision) { Report("忽略过期棋盘版本；重连后重新同步"); return; }
+                    bool requestedRefresh=state.Sequence!=0 && pendingRefresh;
+                    if(State!=null && state.Revision<State.Revision && !requestedRefresh) {
+                        if(state.Sequence!=0) { pending=0;needsSync=true; }
+                        Report("忽略旧棋盘版本，板卡重启后可刷新棋盘");
+                        return;
+                    }
                     if(state.Match==null && State!=null && State.Match!=null) return;
                     if(fields[0]=="@GAME3") stagesSupported=computerSupported=true;
                     if(fields[0]=="@GAME2") computerSupported=true;
                     state.ComputerOpponent=computerSupported && state.Match!=null && state.Match.Mode==GameMode.Challenge;
                     State=state;
+                    needsSync=false;
                     if(state.Sequence!=0 && state.Sequence==pending) {
-                        if(pendingRefresh) syncCommand=stagesSupported?"@SYNC3":computerSupported?"@SYNC2":state.Match!=null?"@SYNC":"@GET";
+                        if(requestedRefresh) syncCommand=stagesSupported?"@SYNC3":computerSupported?"@SYNC2":state.Match!=null?"@SYNC":"@GET";
                         pending=0;
                     }
                     Message=Describe(state);
@@ -125,6 +144,7 @@ namespace Othello.Basic {
                         return;
                     }
                     pending=0;
+                    if(reason=="STALE") needsSync=true;
                     Report(reason=="ILLEGAL"?"非法落子：必须至少翻转对方 1 枚棋子":reason=="STALE"?"版本已过期，正在刷新棋盘":
                         reason=="COMPUTER_TURN"?"请等待电脑走白":"下位机错误："+reason);
                     if(reason=="STALE") Refresh();

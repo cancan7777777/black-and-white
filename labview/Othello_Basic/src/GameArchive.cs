@@ -45,10 +45,10 @@ namespace Othello.Basic {
         public void Observe(BoardState state, bool simulated) {
             if(state==null || state.Match==null) return;
             MatchState match=state.Match;
-            if(current==null || currentRound!=match.Round) {
+            if(current==null || currentRound!=match.Round || state.Revision<lastRevision) {
                 if(match.Phase==GamePhase.Finished) return;
                 currentRound=match.Round;
-                lastRevision=0;
+                lastRevision=settledRound=0;
                 current=new GameRecord { Id=Guid.NewGuid().ToString("N"), Mode=match.Mode, Simulated=simulated,
                     Complete=state.Black==2 && state.White==2 && state.Turn==1 && !match.Edited };
             }
@@ -83,18 +83,23 @@ namespace Othello.Basic {
                 try {
                     using(var reader=XmlReader.Create(file,settings)) {
                         var record=(GameRecord)serializer.Deserialize(reader);
-                        if(record.Frames.Count==0 || record.Frames.Any(frame=>frame.Cells==null || frame.Cells.Length!=64)) unreadable++;
+                        if(record==null || record.Frames==null || record.Frames.Count==0 || record.Frames.Any(frame=>
+                           frame==null || frame.Cells==null || frame.Cells.Length!=64 ||
+                           frame.Cells.Any(cell=>cell!='0' && cell!='1' && cell!='2'))) unreadable++;
                         else records.Add(record);
                     }
                 } catch(InvalidOperationException) { unreadable++; }
                 catch(XmlException) { unreadable++; }
                 catch(IOException) { unreadable++; }
+                catch(UnauthorizedAccessException) { unreadable++; }
             }
             return records.OrderByDescending(record=>record.EndedUtc).ToList();
         }
 
         public static List<GameRecord> Rank(IEnumerable<GameRecord> records, GameMode mode) {
-            return records.Where(record=>record.Mode==mode && !record.Edited && record.Result!=GameResult.Exit)
+            return records.Where(record=>record.Mode==mode && !record.Edited &&
+                (record.Result==GameResult.Board || record.Result==GameResult.Time ||
+                 record.Result==GameResult.Win || record.Result==GameResult.Over))
                 .OrderByDescending(record=>record.Score).ThenBy(record=>record.ElapsedMs)
                 .ThenBy(record=>record.EndedUtc).ThenBy(record=>record.Id,StringComparer.Ordinal).ToList();
         }

@@ -16,6 +16,10 @@ class FakeTransport : ITransport {
     public void Fail(string error) { if(Failed!=null) Failed(error); }
     public void Dispose() { }
 }
+public class EngineConfigProbe : MarshalByRefObject {
+    public string AssemblyLocation() { return typeof(OthelloPanel).Assembly.Location; }
+    public string ConfigLocation() { return EgaroucidEngine.ConfigPath; }
+}
 class BasicTests {
     static int checks;
     static void Check(bool value,string description) { checks++;if(!value) throw new Exception("FAIL "+description); }
@@ -87,6 +91,88 @@ class BasicTests {
                 "panel receives the automatic white move without another click");
             finish.PerformClick();
             Check(panel.Stopped && board.Board == null && !move.Enabled, "panel finish stops and clears the session");
+        }
+    }
+
+    static void CheckSerialPanel() {
+        var serial=new FakeTransport();
+        SerialSettings actual=null;
+        string folder=Path.Combine(Path.GetTempPath(),"Othello-Serial-"+Guid.NewGuid().ToString("N"));
+        using(var panel=new OthelloPanel(new GameArchive(folder),settings=>{ actual=settings;return serial; })) {
+            panel.CreateControl();
+            panel.Start();
+            var method=FindControl<ComboBox>(panel,c=>c.Items.Contains("真实串口"));
+            var port=FindControl<ComboBox>(panel,c=>c.DropDownStyle==ComboBoxStyle.DropDown);
+            var baud=FindControl<ComboBox>(panel,c=>c.Items.Contains("57600"));
+            var bits=FindControl<ComboBox>(panel,c=>c.Items.Contains("7"));
+            var parity=FindControl<ComboBox>(panel,c=>c.Items.Contains("Even"));
+            var stops=FindControl<ComboBox>(panel,c=>c.Items.Contains("1.5"));
+            Check(!port.Enabled && !baud.Enabled,"offline panel does not suggest applying COM settings");
+            method.SelectedItem="真实串口";
+            Check(port.Enabled && baud.Enabled && bits.Enabled && parity.Enabled && stops.Enabled,
+                "choosing real serial exposes all five serial settings");
+            port.Text="COM37";baud.SelectedItem="57600";bits.SelectedItem="7";parity.SelectedItem="Even";stops.SelectedItem="2";
+            var connect=FindControl<Button>(panel,b=>b.Text=="连接");
+            var move=FindControl<Button>(panel,b=>b.Text=="确认落子");
+            var refresh=FindControl<Button>(panel,b=>b.Text=="刷新棋盘");
+            var disconnect=FindControl<Button>(panel,b=>b.Text=="断开");
+            var board=FindControl<BoardView>(panel,b=>true);
+            connect.PerformClick();
+            WaitForPanel(()=>serial.Last!=null,"serial panel starts handshake");
+            Check(actual!=null && actual.Port=="COM37" && actual.Baud==57600 && actual.DataBits==7 &&
+                actual.Parity==Parity.Even && actual.StopBits==StopBits.Two,"serial panel passes the selected parameters to its transport");
+            Check(!move.Enabled && board.Board==null &&
+                FindControl<Label>(panel,l=>l.Text=="COM37 · 正在同步")!=null,"opening COM does not confirm a board");
+            WaitForPanel(()=>refresh.Enabled && FindControl<Label>(panel,l=>l.Text=="COM37 · 棋盘待同步")!=null,
+                "handshake timeout is shown separately from an open port");
+            refresh.PerformClick();
+            serial.Inject(State(2,1,InitialBoard(),1,0,2,2));
+            WaitForPanel(()=>move.Enabled && board.Board!=null,"the first valid refresh unlocks moves");
+            Check(FindControl<Label>(panel,l=>l.Text=="COM37 · 棋盘已同步")!=null,"link badge identifies the synchronized COM port");
+            move.PerformClick();
+            WaitForPanel(()=>refresh.Enabled && !move.Enabled,"move timeout leaves the board read-only");
+            Check(board.Board.Cells==InitialBoard() && serial.Last.StartsWith("@MOVE,3,1,2,3,"),
+                "the timed-out command is not sent twice or applied optimistically");
+            serial.Inject(State(3,1,InitialBoard(),1,0,2,2));
+            WaitForUi(50);
+            Check(!move.Enabled,"late reply to an expired sequence cannot unlock the board");
+            refresh.PerformClick();
+            serial.Inject(State(4,1,InitialBoard(),1,0,2,2));
+            WaitForPanel(()=>move.Enabled,"explicit refresh restores the previous position safely");
+            serial.Fail("串口异常");
+            WaitForPanel(()=>!move.Enabled && refresh.Enabled,"transport failure requires resynchronization");
+            serial.Inject(State(0,1,InitialBoard(),1,0,2,2));
+            WaitForPanel(()=>move.Enabled,"valid spontaneous board transmission restores synchronization");
+            serial.Inject(State(0,9,InitialBoard(),1,0,2,2));
+            WaitForPanel(()=>board.Board.Revision==9,"serial panel receives a board broadcast");
+            serial.Inject(State(0,1,InitialBoard(),1,0,2,2));
+            WaitForUi(50);
+            Check(board.Board.Revision==9,"old unsolicited state cannot roll back the board");
+            refresh.PerformClick();
+            serial.Inject(State(5,1,InitialBoard(),1,0,2,2));
+            WaitForPanel(()=>board.Board.Revision==1 && move.Enabled,"an explicit fresh snapshot recovers after board reboot");
+            disconnect.PerformClick();
+            Check(board.Board==null && port.Enabled && port.Text=="COM37","disconnect clears the board and preserves serial settings");
+        }
+    }
+
+    static void CheckShadowCopy() {
+        string bin=Path.GetDirectoryName(typeof(BasicTests).Assembly.Location);
+        string cache=Path.Combine(bin,"shadow-test-"+Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(cache);
+        AppDomain domain=null;
+        try {
+            domain=AppDomain.CreateDomain("OthelloShadowCopy",null,new AppDomainSetup {
+                ApplicationBase=bin,ShadowCopyFiles="true",CachePath=cache,ApplicationName="OthelloTest" });
+            var probe=(EngineConfigProbe)domain.CreateInstanceAndUnwrap(typeof(EngineConfigProbe).Assembly.FullName,
+                typeof(EngineConfigProbe).FullName);
+            Check(!string.Equals(Path.GetDirectoryName(probe.AssemblyLocation()),bin,StringComparison.OrdinalIgnoreCase),
+                "the separate AppDomain loads the component from a shadow-copy cache");
+            Check(string.Equals(probe.ConfigLocation(),Path.Combine(bin,"EgaroucidPath.txt"),StringComparison.OrdinalIgnoreCase),
+                "shadow-copied component reads the original project engine configuration");
+        } finally {
+            if(domain!=null) AppDomain.Unload(domain);
+            Directory.Delete(cache,true);
         }
     }
 
@@ -220,6 +306,11 @@ class BasicTests {
                 "early exit does not score");
             host.Control(GameControl.Start);
             Check(host.State.Cells==InitialBoard() && !host.State.Match.Edited,"start initializes a fresh round");
+            host.Move(2,3);
+            uint stageRound=host.State.Match.Round;
+            host.Control(GameControl.Restart);
+            Check(host.State.Cells==InitialBoard() && host.State.Match.Round!=stageRound && host.State.Match.Stage==1,
+                "restart restores the initial setup and keeps the current challenge stage");
             host.Control(GameControl.Mode,GameMode.Timed,1);
             host.Control(GameControl.Pause);
             uint paused=host.State.Match.RemainingMs;
@@ -277,6 +368,24 @@ class BasicTests {
             GameRecord exited=reopened.Find(record=>record.Result==GameResult.Exit);
             Check(exited!=null && exited.Complete && exited.Frames.Count==3 && exited.Frames[0].Cells==InitialBoard() &&
                 exited.Frames[1].ToBoard().White==1,"replay preserves opening, move and finish");
+            using(var replay=new ArchiveWindow(archive)) {
+                replay.CreateControl();
+                var board=FindControl<BoardView>(replay,b=>true);
+                var step=FindControl<TrackBar>(replay,t=>true);
+                var previous=FindControl<Button>(replay,b=>b.Text=="上一步");
+                var next=FindControl<Button>(replay,b=>b.Text=="下一步");
+                var game=FindControl<ComboBox>(replay,c=>c.Items.Count==16);
+                var source=FindControl<ComboBox>(replay,c=>c.Items.Contains("离线模拟"));
+                var rank=FindControl<ListView>(replay,t=>true);
+                Check(board.Board.Cells==InitialBoard() && !previous.Enabled && next.Enabled,"replay opens at the first confirmed frame");
+                step.Value=step.Maximum;
+                Check(board.Board.Status==1 && previous.Enabled && !next.Enabled,"replay ends at the confirmed terminal frame");
+                game.SelectedIndex=game.Items.Count-1;
+                Check(step.Value==0 && board.Board.Cells==InitialBoard(),"changing record resets the replay cursor");
+                Check(rank.Items.Count==0,"real and simulated results are filtered independently");
+                source.SelectedItem="离线模拟";
+                Check(rank.Items.Count==5 && rank.Items[0].SubItems.Count==6,"ranking window shows simulated scores and timing columns");
+            }
             foreach(GameMode mode in Enum.GetValues(typeof(GameMode))) {
                 var edited=new GameRecord { Mode=mode, Result=GameResult.Board, Score=64, Edited=true };
                 reopened.Add(edited);
@@ -301,11 +410,14 @@ class BasicTests {
             string legacyPath=Path.Combine(folder,"legacy.xml");
             File.WriteAllText(legacyPath,"<GameRecord><Id>legacy</Id><Mode>Challenge</Mode><Score>25</Score><Total>100</Total>"+
                 "<Frames><ReplayFrame><Cells>"+InitialBoard()+"</Cells></ReplayFrame></Frames></GameRecord>");
+            File.WriteAllText(Path.Combine(folder,"broken.xml"),"<GameRecord><Frames><ReplayFrame><Cells>"+
+                new string('X',64)+"</Cells></ReplayFrame></Frames></GameRecord>");
             var loaded=stagedArchive.Load(out unreadable);
             var fractional=loaded.Find(record=>record.Stage==3);
             var legacyRecord=loaded.Find(record=>record.Id=="legacy");
-            Check(unreadable==0 && fractional!=null && fractional.Score==46.5m && fractional.Total==188.5m &&
+            Check(unreadable==1 && fractional!=null && fractional.Score==46.5m && fractional.Total==188.5m &&
                 legacyRecord!=null && legacyRecord.Score==25m && legacyRecord.Total==100m,"archive preserves new fractions and reads old integer records");
+            Check(!GameArchive.Rank(loaded,GameMode.Challenge).Contains(legacyRecord),"unfinished legacy data is excluded from the standings");
             string fractionalCsv=Path.Combine(folder,"fractional.csv");
             GameArchive.Export(fractionalCsv,new[]{fractional});
             Check(File.ReadAllLines(fractionalCsv)[1].Contains(",46.5,188.5,"),"CSV preserves both half-point values");
@@ -357,6 +469,8 @@ class BasicTests {
             Reject(delegate { new SerialSettings { DataBits=8,StopBits=StopBits.OnePointFive }.Validate(); },"invalid 1.5 stop bits combination");
             if(args.Length!=0) CheckEgaroucid(args[0]);
             CheckPanel();
+            CheckSerialPanel();
+            CheckShadowCopy();
             CheckAdvanced();
             CheckArchive();
             Console.WriteLine("PASS "+checks+" checks: framing, modes, editor, timers, replay, ranking, reconnect, panel actions");

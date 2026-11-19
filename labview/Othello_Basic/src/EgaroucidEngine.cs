@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 namespace Othello.Basic {
     internal sealed class EgaroucidEngine {
         internal static readonly string ConfigPath=Path.Combine(
-            Path.GetDirectoryName(typeof(EgaroucidEngine).Assembly.Location),"EgaroucidPath.txt");
+            Path.GetDirectoryName(new Uri(typeof(EgaroucidEngine).Assembly.CodeBase).LocalPath),"EgaroucidPath.txt");
         static readonly Regex Coordinate=new Regex(@"\A([a-h])([1-8])\z",RegexOptions.IgnoreCase|RegexOptions.CultureInvariant);
         readonly string executable;
         readonly int level;
