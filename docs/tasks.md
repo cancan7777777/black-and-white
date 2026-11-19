@@ -29,7 +29,7 @@
 | T05 | 键盘输入与实体控制入口 | M1 | T02、T03 | 未开始 | [#6](https://github.com/cancan7777777/black-and-white/issues/6) |
 | T06 | 黑白棋规则与基础状态 | M1 | T01、T03 | 未开始 | [#7](https://github.com/cancan7777777/black-and-white/issues/7) |
 | T07 | 下位机 UART、应答、状态上传 | M1 | T03、T06 | 未开始 | [#8](https://github.com/cancan7777777/black-and-white/issues/8) |
-| T08 | LabVIEW 棋盘、串口与落子 | M2 | T02、T03 | 未开始 | [#9](https://github.com/cancan7777777/black-and-white/issues/9) |
+| T08 | LabVIEW 棋盘、串口与落子 | M2 | T02、T03 | 组件构建和仿真通过，VI 绑定及运行待验收 | [#9](https://github.com/cancan7777777/black-and-white/issues/9) |
 | T09 | 双端基础联调与一致性 | M2 | T04–T08 | 未开始 | [#10](https://github.com/cancan7777777/black-and-white/issues/10) |
 | T10 | 下位机模式、控制、计时与编辑 | M3 | T01、T03–T07 | 未开始 | [#11](https://github.com/cancan7777777/black-and-white/issues/11) |
 | T11 | 上位机模式、得分与编辑 | M3 | T09、T10 | 未开始 | [#12](https://github.com/cancan7777777/black-and-white/issues/12) |
