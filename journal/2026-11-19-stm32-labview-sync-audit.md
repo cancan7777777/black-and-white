@@ -34,3 +34,8 @@
 
 - 用户询问点击「连接」或文件链接后的烧录状态。核对 `build/keil-build.log` 可见编译与 HEX 生成成功，项目目录没有找到实板下载校验日志。LabVIEW 的「连接」打开 COM 口并读出板上现有固件的状态。打开工程或 HEX 文件只进入对应软件或查看文件。
 - 烧录需由 Keil 的 Flash → Download 或现有烧录软件执行，以下载及校验成功为准。启动后真实串口收到 `RX @GAME` 可验证进阶通信固件正在运行。当前实板写入结果尚待确认。
+
+## 同日 · ATK-XISP 的 HEX 文件交付
+
+- 用户指定使用 ATK-XISP，在查找时未看到 HEX。核对 Keil 的 `OutputDirectory` 和 `CreateHexFile`，确认进阶版实物固件已输出到 `firmware/Othello_Basic/MDK-ARM/Othello_Basic/Othello_Basic.hex`。项目的 `.gitignore` 将该输出目录排除，GitHub 源码不会包含此构建产物。
+- 复制可直接选取的本地文件 `build/Othello_Advanced.hex`。源文件与副本的 SHA-256 相同，文件为 43,947 字节，979 条 Intel HEX 记录的记录长度和校验和均通过。ATK-XISP 的[官方说明](https://www.openedv.com/docs/tool/ruanjian/ATK-XISP.html)确认支持 HEX 下载和逐字节校验。本轮提供文件，实板烧录仍待确认。
