@@ -20,7 +20,13 @@
 
 ## 操作与验收
 
-绑定时，在 LabVIEW 前面板的 .NET 容器中插入 `bin/Othello.Basic.dll` 里的 `Othello.Basic.OthelloPanel`。绑定与连线待在当前安装环境验证。[NI 前面板 .NET 控件说明](https://www.ni.com/docs/en-US/bundle/labview/page/creating-net-controls-in-a-net-container.html)
+`Main.vi` 是可打开的 VI。`bin/Othello.Basic.dll` 是由 LabVIEW 的 .NET 容器加载的组件，双击 DLL 或在 LabVIEW 的「文件 → 打开」中选择它会报文件类型错误。
+
+1. 在 `Main.vi` 的**前面板**右键点击灰色 .NET 容器，选择「插入 .NET 控件」。如果还没有容器，从「控件选板 → .NET 与 ActiveX → .NET 容器」放置一个。
+2. 在「选择 .NET 控件」对话框中点「浏览」，选择本工程的 `bin/Othello.Basic.dll`。
+3. 在控件列表中选 `OthelloPanel`（完整类型名 `Othello.Basic.OthelloPanel`），点「确定」。绑定成功后容器里会显示棋盘控件。
+
+框图连线按以下步骤进行。原生绑定与连线待在当前安装环境验证。[NI 前面板 .NET 控件说明](https://www.ni.com/docs/en-US/bundle/labview/page/creating-net-controls-in-a-net-container.html)
 
 1. 在框图中将 .NET 容器端子接到循环外的调用节点，选择 `Start()`。
 2. 将控件引用和 `Start()` 的错误输出接进 While 循环。每轮等待 100 ms，并通过属性节点读取 `Stopped`。`Stopped` 或错误状态为真时退出。
