@@ -11,3 +11,4 @@
 - V3 原生库仍被当前 LabVIEW 会话使用，标准路径覆盖失败。双钟版改为加载新命名的 V4 原生库，保留已打开的会话和既有库文件。重新构建配对的上位机组件和 V4 库。
 - 最终运行 `tools/build-labview.ps1` 的隔离构建，原生对局、LED 动画和 467 项上位机检查通过，含旧固件协议回退与 52 手真实 Egaroucid 对弈。按最小面板尺寸绘制 `黑棋 03:00    白棋 03:00`，标签 308×24 像素，文字完整。同一秒多帧没有触发文字重绘，跨秒只更新时钟，得分文字未变。
 - 更新标准目录 `labview/Othello_Basic/bin` 的 `Othello.Basic.dll`、`BasicTests.exe` 和 `native/OthelloSimulatorV4.dll`，三者与测试产物 SHA-256 一致。追加原[调试记录](../调试记录.md)并同步更新 Proteus 的 HEX 和请求示例。实体板保持现有固件，双钟上板需要单独烧录本次 HEX。
+- 通过标准 Git 推送并用 `git ls-remote` 核对修复提交 `ad4cc9b`。GitHub GraphQL 和 REST 多次连接超时，PR 和 Issue 更新尚未完成，保留公开任务分支供核对。
