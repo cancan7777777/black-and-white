@@ -73,7 +73,15 @@ namespace Othello.Basic {
     public sealed class OthelloPanel : UserControl {
         sealed class ClockLabel : Label {
             public ClockLabel() {
-                SetStyle(ControlStyles.UserPaint|ControlStyles.AllPaintingInWmPaint|ControlStyles.OptimizedDoubleBuffer,true);
+                SetStyle(ControlStyles.UserPaint|ControlStyles.AllPaintingInWmPaint|ControlStyles.OptimizedDoubleBuffer|
+                    ControlStyles.Opaque|ControlStyles.ResizeRedraw,true);
+            }
+            protected override void OnPaint(PaintEventArgs e) {
+                e.Graphics.Clear(BackColor);
+                var content=new Rectangle(Padding.Left,Padding.Top,
+                    Math.Max(0,ClientSize.Width-Padding.Horizontal),Math.Max(0,ClientSize.Height-Padding.Vertical));
+                TextRenderer.DrawText(e.Graphics,Text,Font,content,ForeColor,
+                    TextFormatFlags.Left|TextFormatFlags.VerticalCenter|TextFormatFlags.SingleLine|TextFormatFlags.NoPrefix);
             }
         }
         const int EgaroucidModeIndex=3;

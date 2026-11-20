@@ -417,17 +417,49 @@ class BasicTests {
             var clock=FindControl<Label>(panel,l=>l.Text.StartsWith("黑棋 02:59"));
             var scoring=FindControl<Label>(panel,l=>l.Text.Contains("本局 2 分"));
             var board=FindControl<BoardView>(panel,view=>true);
+            var pause=FindControl<Button>(panel,b=>b.Text=="暂停");
+            var move=FindControl<Button>(panel,b=>b.Text=="确认落子");
+            var refresh=FindControl<Button>(panel,b=>b.Text=="刷新棋盘");
+            var resume=FindControl<Button>(panel,b=>b.Text=="继续");
+            var log=FindControl<TextBoxBase>(panel,t=>t.Multiline);
             Check(clock.Height>0,"clock is allotted space in the sidebar");
-            int clockChanges=0,scoreChanges=0;
+            Check(pause!=null && move!=null && refresh!=null && log!=null,"timed play actions and log are present");
+            int clockChanges=0,scoreChanges=0,enabledChanges=0,logChanges=0;
             clock.TextChanged+=delegate { clockChanges++; };
             scoring.TextChanged+=delegate { scoreChanges++; };
-            serial.Inject(Protocol.Frame("@GAME6,0"+fields+"178100"+scores+"178100,180000"));
+            pause.EnabledChanged+=delegate { enabledChanges++; };
+            move.EnabledChanged+=delegate { enabledChanges++; };
+            refresh.EnabledChanged+=delegate { enabledChanges++; };
+            log.TextChanged+=delegate { logChanges++; };
+            WaitForPanel(()=>serial.Last.StartsWith("@SYNC6,2,"),"the first automatic timed poll was sent");
+            Check(pause.Enabled && move.Enabled && refresh.Enabled && enabledChanges==0,
+                "background timed polling does not disable the player controls while the reply is pending");
+            serial.Inject(Protocol.Frame("@GAME6,2"+fields+"178100"+scores+"178100,180000"));
             WaitForPanel(()=>board.Board.Match.BlackRemainingMs==178100,"panel processes a second sample in the same displayed second");
-            Check(clockChanges==0 && scoreChanges==0,"same displayed second does not rewrite the timer or score");
-            serial.Inject(Protocol.Frame("@GAME6,0"+fields+"177900"+scores+"177900,180000"));
+            Check(clockChanges==0 && scoreChanges==0 && enabledChanges==0 && logChanges==0,
+                "the same displayed second leaves timer, score, controls and log unchanged");
+            WaitForPanel(()=>serial.Last.StartsWith("@SYNC6,3,"),"the next automatic timed poll was sent");
+            serial.Inject(Protocol.Frame("@GAME6,3"+fields+"177900"+scores+"177900,180000"));
             WaitForPanel(()=>clock.Text=="黑棋 02:58    白棋 03:00","new second reaches the clock asynchronously");
-            Check(clockChanges==1 && scoreChanges==0,
+            Check(clockChanges==1 && scoreChanges==0 && enabledChanges==0 && logChanges==0,
                 "only the active clock text updates across a second boundary");
+            WaitForPanel(()=>serial.Last.StartsWith("@SYNC6,4,"),"a poll is pending when the player clicks pause");
+            pause.PerformClick();
+            Check(serial.Last.StartsWith("@CTL,5,2,PAUSE,") && !move.Enabled,"the player command takes precedence and waits for its own reply");
+            serial.Inject(Protocol.Frame("@GAME6,5,3,1,0,2,2,"+InitialBoard()+",2,1,2,0,0,177850,2150,0,0,180,0,4,0,177850,180000"));
+            WaitForPanel(()=>resume.Enabled && board.Board.Match.Phase==GamePhase.Paused,"confirmed pause replaces the running state");
+            serial.Inject(Protocol.Frame("@GAME6,4"+fields+"177900"+scores+"177900,180000"));
+            WaitForUi(100);
+            Check(resume.Enabled && board.Board.Match.Phase==GamePhase.Paused && !log.Text.Contains("忽略不属于当前请求"),
+                "a superseded automatic reply is silently dropped after the player command succeeds");
+            resume.PerformClick();
+            string running=",4,1,0,2,2,"+InitialBoard()+",2,0,2,0,0,";
+            serial.Inject(Protocol.Frame("@GAME6,6"+running+"177850"+scores+"177850,180000"));
+            WaitForPanel(()=>serial.Last.StartsWith("@SYNC6,7,"),"resuming starts the background clock poll again");
+            WaitForPanel(()=>!move.Enabled && refresh.Enabled && serial.Last.StartsWith("@SYNC6,8,"),
+                "an actual missed poll still marks the connection unsynchronized and sends a recovery poll");
+            serial.Inject(Protocol.Frame("@GAME6,8"+running+"176350"+scores+"176350,180000"));
+            WaitForPanel(()=>move.Enabled && pause.Enabled,"the next confirmed poll recovers the connection");
         }
     }
 
