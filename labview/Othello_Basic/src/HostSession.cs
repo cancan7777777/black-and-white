@@ -47,7 +47,7 @@ namespace Othello.Basic {
                 }); };
                 State=null; pending=0; pendingRefresh=false;
                 computerSupported=stagesSupported=keyboardAiSupported=externalAiSupported=false;
-                needsSync=true; syncCommand="@SYNC5";
+                needsSync=true; syncCommand="@SYNC6";
                 nextPoll=DateTime.UtcNow; lines.Clear();
                 Report("已连接，正在读取完整棋盘"); Refresh();
             } catch { device.Dispose(); transport=null; throw; }
@@ -124,7 +124,7 @@ namespace Othello.Basic {
             AddLog("RX "+line.TrimEnd());
             try {
                 string[] fields=Protocol.Fields(line);
-                if(fields[0]=="@GAME5" || fields[0]=="@GAME4" || fields[0]=="@GAME3" || fields[0]=="@GAME2" ||
+                if(fields[0]=="@GAME6" || fields[0]=="@GAME5" || fields[0]=="@GAME4" || fields[0]=="@GAME3" || fields[0]=="@GAME2" ||
                     fields[0]=="@GAME" || fields[0]=="@STATE") {
                     BoardState state=Protocol.ParseState(fields);
                     if(state.Sequence!=0 && state.Sequence!=pending) { Report("忽略不属于当前请求的 STATE"); return; }
@@ -135,7 +135,7 @@ namespace Othello.Basic {
                         return;
                     }
                     if(state.Match==null && State!=null && State.Match!=null) return;
-                    if(fields[0]=="@GAME5") externalAiSupported=stagesSupported=computerSupported=true;
+                    if(fields[0]=="@GAME6" || fields[0]=="@GAME5") externalAiSupported=stagesSupported=computerSupported=true;
                     if(fields[0]=="@GAME4" && !externalAiSupported) keyboardAiSupported=stagesSupported=computerSupported=true;
                     if(fields[0]=="@GAME3") stagesSupported=computerSupported=true;
                     if(fields[0]=="@GAME2") computerSupported=true;
@@ -144,7 +144,7 @@ namespace Othello.Basic {
                     State=state;
                     needsSync=false;
                     if(state.Sequence!=0 && state.Sequence==pending) {
-                        if(requestedRefresh) syncCommand=externalAiSupported?"@SYNC5":keyboardAiSupported?"@SYNC4":stagesSupported?"@SYNC3":
+                        if(requestedRefresh) syncCommand=fields[0]=="@GAME6"?"@SYNC6":externalAiSupported?"@SYNC5":keyboardAiSupported?"@SYNC4":stagesSupported?"@SYNC3":
                             computerSupported?"@SYNC2":state.Match!=null?"@SYNC":"@GET";
                         pending=0;
                     }
@@ -157,7 +157,7 @@ namespace Othello.Basic {
                     if(seq==0 && pending!=0) { Report("下位机报告无序号错误："+reason); return; }
                     if(seq!=0 && pendingRefresh && reason=="COMMAND" && syncCommand!="@GET") {
                         pending=0;
-                        syncCommand=syncCommand=="@SYNC5"?"@SYNC4":syncCommand=="@SYNC4"?"@SYNC3":syncCommand=="@SYNC3"?"@SYNC2":
+                        syncCommand=syncCommand=="@SYNC6"?"@SYNC5":syncCommand=="@SYNC5"?"@SYNC4":syncCommand=="@SYNC4"?"@SYNC3":syncCommand=="@SYNC3"?"@SYNC2":
                             syncCommand=="@SYNC2"?"@SYNC":"@GET";
                         Refresh();
                         return;

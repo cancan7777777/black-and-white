@@ -199,8 +199,10 @@ class BasicTests {
             var move=FindControl<Button>(panel,b=>b.Text=="确认落子");
             var refresh=FindControl<Button>(panel,b=>b.Text=="刷新棋盘");
             var board=FindControl<BoardView>(panel,b=>true);
-            WaitForPanel(()=>serial.Last!=null && serial.Last.StartsWith("@SYNC5,1,"),"serial panel requests the current firmware protocol");
-            serial.Inject(ExternalState(1,model.State));
+            WaitForPanel(()=>serial.Last!=null && serial.Last.StartsWith("@SYNC6,1,"),"serial panel requests the current firmware protocol");
+            serial.Inject(Protocol.Frame("@ERROR,1,COMMAND"));
+            WaitForPanel(()=>serial.Last.StartsWith("@SYNC5,2,"),"serial panel can fall back to the previous AI protocol");
+            serial.Inject(ExternalState(2,model.State));
             WaitForPanel(()=>board.Board!=null && move.Enabled,"serial panel confirms the ordinary boot board");
 
             File.WriteAllText(EgaroucidEngine.ConfigPath,Path.Combine(Path.GetTempPath(),Guid.NewGuid().ToString("N")+".exe"));
@@ -211,17 +213,17 @@ class BasicTests {
             serial.Inject(ExternalState(0,model.State));
             WaitForPanel(()=>board.Board.ExternalAiTurn && !move.Enabled &&
                 FindControl<Label>(panel,l=>l.Text.Contains("EN 未落子"))!=null,"without EN the physical white turn stays reserved");
-            Check(serial.Last.StartsWith("@SYNC5,1,") && board.Board.Revision==3,"missing engine sends no fallback move");
+            Check(serial.Last.StartsWith("@SYNC5,2,") && board.Board.Revision==3,"missing engine sends no fallback move");
 
             File.WriteAllText(EgaroucidEngine.ConfigPath,enginePath);
             refresh.PerformClick();
-            serial.Inject(ExternalState(2,model.State));
-            WaitForPanel(()=>serial.Last.StartsWith("@AI,3,3,"),"real EN returns a versioned white move after S15",12000);
+            serial.Inject(ExternalState(3,model.State));
+            WaitForPanel(()=>serial.Last.StartsWith("@AI,4,3,"),"real EN returns a versioned white move after S15",12000);
             string[] command=Protocol.Fields(serial.Last);
             uint before=model.State.Revision;
             model.EngineMove((int)Protocol.Number(command[3]),(int)Protocol.Number(command[4]));
             Check(model.State.Revision!=before && model.State.Turn==1,"the real device state machine accepts the EN move");
-            serial.Inject(ExternalState(3,model.State));
+            serial.Inject(ExternalState(4,model.State));
             WaitForPanel(()=>board.Board.Turn==1 && board.Board.Black==3 && board.Board.White==3 && move.Enabled,
                 "the verified reply returns control to black");
             model.Control(GameControl.Mode,GameMode.Casual,180);
@@ -354,20 +356,15 @@ class BasicTests {
         using(var host=new HostSession()) {
             var legacy=new FakeTransport();
             host.Connect(legacy);
-            Check(legacy.Last.StartsWith("@SYNC5,1,"),"new host probes external AI capability");
-            legacy.Inject(Protocol.Frame("@ERROR,1,COMMAND"));
-            Check(legacy.Last.StartsWith("@SYNC4,2,"),"external AI negotiation falls back to previous firmware");
-            legacy.Inject(Protocol.Frame("@ERROR,2,COMMAND"));
-            Check(legacy.Last.StartsWith("@SYNC3,3,"),"previous firmware negotiation falls back to staged scoring");
-            legacy.Inject(Protocol.Frame("@ERROR,3,COMMAND"));
-            Check(legacy.Last.StartsWith("@SYNC2,4,"),"stage negotiation falls back to computer opponent");
-            legacy.Inject(Protocol.Frame("@ERROR,4,COMMAND"));
-            Check(legacy.Last.StartsWith("@SYNC,5,"),"computer negotiation falls back to previous extended protocol");
-            legacy.Inject(Protocol.Frame("@ERROR,5,COMMAND"));
-            Check(legacy.Last.StartsWith("@GET,6,"),"legacy negotiation falls back to GET");
-            legacy.Inject(State(6,1,InitialBoard(),1,0,2,2));
+            var probes=new[]{"@SYNC6","@SYNC5","@SYNC4","@SYNC3","@SYNC2","@SYNC","@GET"};
+            for(int i=0;i<probes.Length;i++) {
+                int sequence=i+1;
+                Check(legacy.Last.StartsWith(probes[i]+","+sequence+","),"negotiation tries "+probes[i]);
+                if(i<probes.Length-1) legacy.Inject(Protocol.Frame("@ERROR,"+sequence+",COMMAND"));
+            }
+            legacy.Inject(State(7,1,InitialBoard(),1,0,2,2));
             host.Move(2,3);
-            Check(legacy.Last.StartsWith("@MOVE,7,"),"legacy host move format preserved");
+            Check(legacy.Last.StartsWith("@MOVE,8,"),"legacy host move format preserved");
         }
         using(var host=new HostSession()) {
             host.Connect(new SimulatedTransport());
@@ -390,6 +387,7 @@ class BasicTests {
             Check(host.State.Cells==InitialBoard() && host.State.Match.Round!=stageRound && host.State.Match.Stage==1,
                 "restart restores the initial setup and keeps the current challenge stage");
             host.Control(GameControl.Mode,GameMode.Timed,1);
+            Check(host.State.Match.BlackRemainingMs==1000 && host.State.Match.WhiteRemainingMs==1000,"new host receives two full clocks");
             host.Control(GameControl.Pause);
             uint paused=host.State.Match.RemainingMs;
             Thread.Sleep(1100);
@@ -398,8 +396,38 @@ class BasicTests {
             host.Control(GameControl.Resume);
             Thread.Sleep(1100);
             host.Tick();
-            Check(host.State.Match.Result==GameResult.Time && host.State.Match.Total==2 && host.State.Match.ElapsedMs==1000,
+            Check(host.State.Match.Result==GameResult.Time && host.State.Match.Total==2 && host.State.Match.ElapsedMs==1000 &&
+                host.State.Match.BlackRemainingMs==0 && host.State.Match.WhiteRemainingMs==1000,
                 "timer settles exactly at limit and credits the current round");
+        }
+    }
+
+    static void CheckClockPanel() {
+        var serial=new FakeTransport();
+        using(var panel=new OthelloPanel(new GameArchive(Path.GetTempPath()),settings=>serial)) {
+            panel.CreateControl();panel.Start();
+            FindControl<ComboBox>(panel,c=>c.Items.Contains("真实串口")).SelectedItem="真实串口";
+            FindControl<ComboBox>(panel,c=>c.DropDownStyle==ComboBoxStyle.DropDown).Text="COM37";
+            FindControl<Button>(panel,b=>b.Text=="连接").PerformClick();
+            WaitForPanel(()=>serial.Last!=null&&serial.Last.StartsWith("@SYNC6,1,"),"clock panel requests split-clock frames");
+            string fields=",2,1,0,2,2,"+InitialBoard()+",2,0,2,0,0,";
+            const string scores=",0,0,0,180,0,4,0,";
+            serial.Inject(Protocol.Frame("@GAME6,1"+fields+"178800"+scores+"178800,180000"));
+            WaitForPanel(()=>FindControl<Label>(panel,l=>l.Text=="黑棋 02:59    白棋 03:00")!=null,"separate clocks are visible");
+            var clock=FindControl<Label>(panel,l=>l.Text.StartsWith("黑棋 02:59"));
+            var scoring=FindControl<Label>(panel,l=>l.Text.Contains("本局 2 分"));
+            var board=FindControl<BoardView>(panel,view=>true);
+            Check(clock.Height>0,"clock is allotted space in the sidebar");
+            int clockChanges=0,scoreChanges=0;
+            clock.TextChanged+=delegate { clockChanges++; };
+            scoring.TextChanged+=delegate { scoreChanges++; };
+            serial.Inject(Protocol.Frame("@GAME6,0"+fields+"178100"+scores+"178100,180000"));
+            WaitForPanel(()=>board.Board.Match.BlackRemainingMs==178100,"panel processes a second sample in the same displayed second");
+            Check(clockChanges==0 && scoreChanges==0,"same displayed second does not rewrite the timer or score");
+            serial.Inject(Protocol.Frame("@GAME6,0"+fields+"177900"+scores+"177900,180000"));
+            WaitForPanel(()=>clock.Text=="黑棋 02:58    白棋 03:00","new second reaches the clock asynchronously");
+            Check(clockChanges==1 && scoreChanges==0,
+                "only the active clock text updates across a second boundary");
         }
     }
 
@@ -586,6 +614,7 @@ class BasicTests {
             CheckSerialPanel();
             CheckShadowCopy();
             CheckAdvanced();
+            CheckClockPanel();
             CheckOutcomes();
             CheckArchive();
             Console.WriteLine("PASS "+checks+" checks: framing, modes, editor, timers, replay, ranking, reconnect, panel actions");

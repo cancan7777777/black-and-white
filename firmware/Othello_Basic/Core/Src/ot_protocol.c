@@ -22,21 +22,28 @@ int ot_state(const OtGame *g, uint32_t seq, char *out, size_t cap)
 
 int ot_match_state(const OtMatch *m, OtStateFormat format, uint32_t seq, char *out, size_t cap)
 {
-    static const char *const tags[] = { "@STATE", "@GAME", "@GAME2", "@GAME3", "@GAME4", "@GAME5" };
+    static const char *const tags[] = { "@STATE", "@GAME", "@GAME2", "@GAME3", "@GAME4", "@GAME5", "@GAME6" };
     OtMode wire_mode = m->mode == OT_EXTERNAL_AI && format < OT_FORMAT_EXTERNAL_AI ? OT_CASUAL : m->mode;
+    uint32_t remaining = m->result == OT_RESULT_TIME ? 0u : m->remaining_ms[m->game.turn == OT_WHITE ? 1u : 0u];
     int base, n;
     if (format == OT_FORMAT_BASIC) return ot_state(&m->game, seq, out, cap);
     base = state_payload(&m->game, tags[format], seq, out, cap);
     if (base < 0 || (size_t)base >= cap) return -1;
     n = snprintf(out + base, cap - (size_t)base, ",%u,%u,%lu,%lu,%u,%lu,%lu,%u,%u,%u",
                  (unsigned)wire_mode, (unsigned)m->phase, (unsigned long)m->round,
-                 (unsigned long)m->total, m->losses, (unsigned long)m->remaining_ms,
+                 (unsigned long)m->total, m->losses, (unsigned long)remaining,
                  (unsigned long)m->elapsed_ms, m->edited, (unsigned)m->result, m->limit_seconds);
     if (n < 0 || (size_t)n >= cap - (size_t)base) return -1;
     base += n;
     if (format >= OT_FORMAT_STAGES) {
         n = snprintf(out + base, cap - (size_t)base, ",%u,%u,%u",
                      (unsigned)m->stage, ot_match_score_half(m), (unsigned)m->total_half_point);
+        if (n < 0 || (size_t)n >= cap - (size_t)base) return -1;
+        base += n;
+    }
+    if (format == OT_FORMAT_CLOCKS) {
+        n = snprintf(out + base, cap - (size_t)base, ",%lu,%lu",
+                     (unsigned long)m->remaining_ms[0], (unsigned long)m->remaining_ms[1]);
         if (n < 0 || (size_t)n >= cap - (size_t)base) return -1;
         base += n;
     }
@@ -76,6 +83,7 @@ int ot_match_command(OtMatch *m, OtStateFormat *format, const char *line, char *
         else if (!strcmp(buf, "@SYNC3")) reply = OT_FORMAT_STAGES;
         else if (!strcmp(buf, "@SYNC4")) reply = OT_FORMAT_KEYBOARD_AI;
         else if (!strcmp(buf, "@SYNC5")) reply = OT_FORMAT_EXTERNAL_AI;
+        else if (!strcmp(buf, "@SYNC6")) reply = OT_FORMAT_CLOCKS;
         else return err(seq, "COMMAND", out, cap);
         *format = reply == OT_FORMAT_COMPUTER ? OT_FORMAT_ADVANCED : reply;
         return ot_match_state(m, reply, seq, out, cap);
