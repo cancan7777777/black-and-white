@@ -8,7 +8,7 @@
 #define OT_MAX_SECONDS 3600u
 #define OT_COMPUTER_DELAY_MS 250u
 
-typedef enum { OT_CASUAL, OT_CHALLENGE, OT_TIMED } OtMode;
+typedef enum { OT_CASUAL, OT_CHALLENGE, OT_TIMED, OT_AI } OtMode;
 typedef enum { OT_RUNNING, OT_PAUSED, OT_EDITING, OT_FINISHED } OtPhase;
 typedef enum { OT_RESULT_NONE, OT_RESULT_BOARD, OT_RESULT_TIME, OT_RESULT_EXIT,
                OT_RESULT_WIN, OT_RESULT_OVER } OtResult;
@@ -26,6 +26,8 @@ typedef struct {
 } OtMatch;
 
 void ot_match_init(OtMatch *match);
+/* The completed round keeps its original mode for display and archiving. */
+OtMode ot_match_active_mode(const OtMatch *match);
 /* Returns true when the computer moves or the timer settles the round. */
 uint8_t ot_match_tick(OtMatch *match, uint32_t now);
 uint8_t ot_match_computer_turn(const OtMatch *match);

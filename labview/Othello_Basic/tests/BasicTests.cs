@@ -89,6 +89,13 @@ class BasicTests {
             WaitForPanel(()=>board.Board.ComputerTurn && !move.Enabled,"panel waits for the computer after the black move");
             WaitForPanel(()=>board.Board.Turn==1 && board.Board.Black==3 && board.Board.White==3 && move.Enabled,
                 "panel receives the automatic white move without another click");
+            modes.SelectedItem="STM32 AI";apply.PerformClick();
+            WaitForPanel(()=>board.Board.Match.Mode==GameMode.Ai && board.Board.Match.Stage==0 && move.Enabled,
+                "standalone STM32 AI has its own selectable mode");
+            move.PerformClick();
+            WaitForPanel(()=>board.Board.ComputerTurn && !move.Enabled,"standalone STM32 AI owns white's turn");
+            WaitForPanel(()=>board.Board.Turn==1 && board.Board.Black==3 && board.Board.White==3 && move.Enabled,
+                "standalone mode answers the player's opening move");
             finish.PerformClick();
             Check(panel.Stopped && board.Board == null && !move.Enabled, "panel finish stops and clears the session");
         }
@@ -151,6 +158,9 @@ class BasicTests {
             refresh.PerformClick();
             serial.Inject(State(5,1,InitialBoard(),1,0,2,2));
             WaitForPanel(()=>board.Board.Revision==1 && move.Enabled,"an explicit fresh snapshot recovers after board reboot");
+            serial.Inject(Protocol.Frame("@GAME4,0,2,1,0,2,2,"+InitialBoard()+",3,0,2,0,0,0,0,0,0,180,0,4,0"));
+            WaitForPanel(()=>board.Board.Match!=null && board.Board.Match.Mode==GameMode.Ai && board.Board.ComputerOpponent,
+                "the panel recognizes an unsolicited AI mode change from the device");
             disconnect.PerformClick();
             Check(board.Board==null && port.Enabled && port.Text=="COM37","disconnect clears the board and preserves serial settings");
         }
@@ -280,20 +290,22 @@ class BasicTests {
         using(var host=new HostSession()) {
             var legacy=new FakeTransport();
             host.Connect(legacy);
-            Check(legacy.Last.StartsWith("@SYNC3,1,"),"new host probes staged scoring");
+            Check(legacy.Last.StartsWith("@SYNC4,1,"),"new host probes keypad AI capability");
             legacy.Inject(Protocol.Frame("@ERROR,1,COMMAND"));
-            Check(legacy.Last.StartsWith("@SYNC2,2,"),"stage negotiation falls back to computer opponent");
+            Check(legacy.Last.StartsWith("@SYNC3,2,"),"keypad AI negotiation falls back to staged scoring");
             legacy.Inject(Protocol.Frame("@ERROR,2,COMMAND"));
-            Check(legacy.Last.StartsWith("@SYNC,3,"),"computer negotiation falls back to previous extended protocol");
+            Check(legacy.Last.StartsWith("@SYNC2,3,"),"stage negotiation falls back to computer opponent");
             legacy.Inject(Protocol.Frame("@ERROR,3,COMMAND"));
-            Check(legacy.Last.StartsWith("@GET,4,"),"legacy negotiation falls back to GET");
-            legacy.Inject(State(4,1,InitialBoard(),1,0,2,2));
+            Check(legacy.Last.StartsWith("@SYNC,4,"),"computer negotiation falls back to previous extended protocol");
+            legacy.Inject(Protocol.Frame("@ERROR,4,COMMAND"));
+            Check(legacy.Last.StartsWith("@GET,5,"),"legacy negotiation falls back to GET");
+            legacy.Inject(State(5,1,InitialBoard(),1,0,2,2));
             host.Move(2,3);
-            Check(legacy.Last.StartsWith("@MOVE,5,"),"legacy host move format preserved");
+            Check(legacy.Last.StartsWith("@MOVE,6,"),"legacy host move format preserved");
         }
         using(var host=new HostSession()) {
             host.Connect(new SimulatedTransport());
-            Check(host.State.Match.Mode==GameMode.Casual,"advanced default boot game");
+            Check(host.State.Match.Mode==GameMode.Casual && host.SupportsKeyboardAi,"advanced default boot game with current capabilities");
             host.Control(GameControl.Mode,GameMode.Challenge,180);
             Check(host.State.ComputerOpponent && host.State.Match.Stage==1 && host.State.Match.TotalScore==0m,
                 "human-versus-computer challenge confirmed");
@@ -364,7 +376,8 @@ class BasicTests {
             }
             int unreadable;
             var reopened=new GameArchive(folder).Load(out unreadable);
-            Check(unreadable==0 && reopened.Count==16,"all real simulated rounds reopen with no duplicate on refresh");
+            int savedCount=1+5*Enum.GetValues(typeof(GameMode)).Length;
+            Check(unreadable==0 && reopened.Count==savedCount,"all real simulated rounds reopen with no duplicate on refresh");
             GameRecord exited=reopened.Find(record=>record.Result==GameResult.Exit);
             Check(exited!=null && exited.Complete && exited.Frames.Count==3 && exited.Frames[0].Cells==InitialBoard() &&
                 exited.Frames[1].ToBoard().White==1,"replay preserves opening, move and finish");
@@ -374,7 +387,7 @@ class BasicTests {
                 var step=FindControl<TrackBar>(replay,t=>true);
                 var previous=FindControl<Button>(replay,b=>b.Text=="上一步");
                 var next=FindControl<Button>(replay,b=>b.Text=="下一步");
-                var game=FindControl<ComboBox>(replay,c=>c.Items.Count==16);
+                var game=FindControl<ComboBox>(replay,c=>c.Items.Count==savedCount);
                 var source=FindControl<ComboBox>(replay,c=>c.Items.Contains("离线模拟"));
                 var rank=FindControl<ListView>(replay,t=>true);
                 Check(board.Board.Cells==InitialBoard() && !previous.Enabled && next.Enabled,"replay opens at the first confirmed frame");
@@ -404,6 +417,10 @@ class BasicTests {
             var settled=Protocol.ParseState(Protocol.Fields(Protocol.Frame(finishPayload)));
             Check(settled.Match.Stage==3 && settled.Match.Score==46.5m && settled.Match.TotalScore==188.5m,
                 "staged wire protocol preserves fractional scores exactly");
+            var autoExit=Protocol.ParseState(Protocol.Fields(Protocol.Frame(finishPayload.Replace("@GAME3","@GAME4"))));
+            Check(settled.Match.ActiveMode==GameMode.Challenge && autoExit.Match.ActiveMode==GameMode.Casual &&
+                autoExit.Match.Mode==GameMode.Challenge && autoExit.Match.TotalScore==188.5m,
+                "new firmware exits active challenge without losing the archived challenge result");
             Reject(()=>Protocol.ParseState(Protocol.Fields(Protocol.Frame(finishPayload.Replace(",3,93,1",",3,94,1")))),
                 "staged wire protocol rejects wrong coefficient scores");
             stagedArchive.Observe(opening,true); stagedArchive.Observe(settled,true);

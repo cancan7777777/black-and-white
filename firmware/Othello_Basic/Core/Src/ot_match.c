@@ -27,6 +27,12 @@ void ot_match_init(OtMatch *m)
     new_round(m);
 }
 
+OtMode ot_match_active_mode(const OtMatch *m)
+{
+    if (m->result == OT_RESULT_WIN || m->result == OT_RESULT_OVER) return OT_CASUAL;
+    return m->mode;
+}
+
 static void clear_scores(OtMatch *m)
 {
     m->total = 0u;
@@ -68,7 +74,8 @@ static void finish(OtMatch *m, OtResult reason)
 
 uint8_t ot_match_computer_turn(const OtMatch *m)
 {
-    return (uint8_t)(m->mode == OT_CHALLENGE && m->phase == OT_RUNNING && m->game.turn == OT_WHITE);
+    return (uint8_t)((m->mode == OT_CHALLENGE || m->mode == OT_AI) &&
+                     m->phase == OT_RUNNING && m->game.turn == OT_WHITE);
 }
 
 static uint8_t apply_move(OtMatch *m, uint8_t row, uint8_t col)
@@ -140,6 +147,7 @@ uint8_t ot_match_control(OtMatch *m, OtControl action, uint32_t value, uint32_t 
     case OT_RESTART:
         if (action == OT_START && m->phase != OT_FINISHED) return 0u;
         if (m->phase == OT_FINISHED) {
+            m->mode = ot_match_active_mode(m);
             if (m->result == OT_RESULT_WIN || m->result == OT_RESULT_OVER || m->result == OT_RESULT_EXIT)
                 clear_scores(m);
             else if (m->mode == OT_CHALLENGE && !m->edited)
@@ -148,7 +156,7 @@ uint8_t ot_match_control(OtMatch *m, OtControl action, uint32_t value, uint32_t 
         new_round(m);
         return 1u;
     case OT_SET_MODE:
-        if (value > OT_TIMED || seconds == 0u || seconds > OT_MAX_SECONDS) return 0u;
+        if (value > OT_AI || seconds == 0u || seconds > OT_MAX_SECONDS) return 0u;
         m->mode = (OtMode)value;
         m->limit_seconds = (uint16_t)seconds;
         clear_scores(m);

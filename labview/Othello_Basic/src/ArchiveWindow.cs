@@ -62,7 +62,8 @@ namespace Othello.Basic {
             var filters=new FlowLayoutPanel { Dock=DockStyle.Top, Height=56, Padding=new Padding(5) };
             mode.Margin=source.Margin=new Padding(3,10,5,0);
             OthelloPanel.StyleButton(export);
-            mode.Items.AddRange(new object[]{"普通","闯关","计时"}); source.Items.AddRange(new object[]{"实体棋盘","离线模拟"});
+            mode.Items.AddRange(Enum.GetValues(typeof(GameMode)).Cast<GameMode>().Select(GameArchive.ModeName).ToArray());
+            source.Items.AddRange(new object[]{"实体棋盘","离线模拟"});
             filters.Controls.Add(mode); filters.Controls.Add(source); filters.Controls.Add(export);
             standings.Columns.Add("排名",50); standings.Columns.Add("结束时间",185); standings.Columns.Add("本局得分 (分)",106);
             standings.Columns.Add("总分 (分)",88); standings.Columns.Add("用时 (s)",74); standings.Columns.Add("结果",90);

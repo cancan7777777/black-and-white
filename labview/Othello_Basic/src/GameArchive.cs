@@ -105,7 +105,12 @@ namespace Othello.Basic {
         }
 
         public static string ModeName(GameMode mode) {
-            return mode==GameMode.Challenge ? "闯关" : mode==GameMode.Timed ? "计时" : "普通";
+            switch(mode) {
+                case GameMode.Challenge: return "闯关";
+                case GameMode.Timed: return "计时";
+                case GameMode.Ai: return "STM32 AI";
+                default: return "普通";
+            }
         }
         public static void Export(string file, IEnumerable<GameRecord> records) {
             using(var writer=new StreamWriter(file,false,new UTF8Encoding(true))) {

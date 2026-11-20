@@ -77,6 +77,12 @@ AppBasicMoveResult AppBasic_RequestMove(uint8_t row, uint8_t col,
     return APP_MOVE_OK;
 }
 
+static void toggle_mode(OtMode mode)
+{
+    OtMode next = ot_match_active_mode(&app.match) == mode ? OT_CASUAL : mode;
+    (void)ot_match_control(&app.match, OT_SET_MODE, next, app.match.limit_seconds);
+}
+
 void AppBasic_HandleKey(char key)
 {
     uint8_t old_row = app.row, old_col = app.col;
@@ -102,9 +108,9 @@ void AppBasic_HandleKey(char key)
         (void)ot_match_control(&app.match, app.match.phase == OT_PAUSED ? OT_RESUME : OT_PAUSE, 0u, 0u);
         break;
     case 'C': (void)ot_match_control(&app.match, OT_END, 0u, 0u); break;
-    case 'D':
-        (void)ot_match_control(&app.match, OT_SET_MODE, ((unsigned)app.match.mode + 1u) % 3u, app.match.limit_seconds);
-        break;
+    case 'D': toggle_mode(OT_CHALLENGE); break;
+    case '#': toggle_mode(OT_AI); break;
+    case '9': toggle_mode(OT_TIMED); break;
     case '0': (void)ot_match_control(&app.match, OT_RESTART, 0u, 0u); break;
     case '*': (void)ot_match_control(&app.match, OT_TOGGLE_EDIT, 0u, 0u); break;
     default: break;

@@ -71,7 +71,7 @@ namespace Othello.Basic {
         }
     }
     public sealed class OthelloPanel : UserControl {
-        const int EgaroucidMode=3;
+        const int EgaroucidMode=4;
         static readonly Color Ink=Color.FromArgb(26,52,46),Muted=Color.FromArgb(72,98,89);
         static readonly Color Canvas=Color.FromArgb(233,241,237),Tint=Color.FromArgb(240,247,243);
         static readonly Color Warm=Color.FromArgb(251,239,225),Cool=Color.FromArgb(227,246,244);
@@ -236,7 +236,7 @@ namespace Othello.Basic {
             scoring.TextAlign=ContentAlignment.MiddleLeft;
             sidebar.Controls.Add(scoring,0,2);
             var settings=Grid(3,19,0);
-            Combo(gameMode,new[]{"普通","闯关","计时","Egaroucid"},0);
+            Combo(gameMode,new[]{"普通","闯关","计时","STM32 AI","Egaroucid"},0);
             gameMode.SelectedIndexChanged+=delegate { UpdateModeInput(); };
             AddField(settings,0,"新局模式",gameMode);
             AddField(settings,1,limitLabel,limit);
@@ -497,8 +497,11 @@ namespace Othello.Basic {
             logTitle.Text=state==null?"通信日志":"通信日志  ·  棋盘版本 "+state.Revision;
             string stage=match!=null&&match.Stage!=0 ? " · 第 "+match.Stage+"/4 关 ×"+(match.Stage/2m).ToString("0.#") : "";
             string scoreLabel=stage.Length!=0 ? "本关" : "本局";
-            scoring.Text=match==null?"本局 — 分  总分 — 分":(egaroucid!=null&&Casual(state)?"Egaroucid · 玩家执黑":
-                state.ComputerOpponent?"闯关（人机）":GameArchive.ModeName(match.Mode))+
+            string modeTitle=match==null?"":GameArchive.ModeName(match.Mode);
+            if(egaroucid!=null&&Casual(state)) modeTitle="Egaroucid · 玩家执黑";
+            else if(match!=null&&match.Mode==GameMode.Challenge)
+                modeTitle=match.ActiveMode==GameMode.Casual?"闯关结算":state.ComputerOpponent?"闯关（人机）":"闯关";
+            scoring.Text=match==null?"本局 — 分  总分 — 分":modeTitle+
                 stage+Environment.NewLine+scoreLabel+" "+match.Score.ToString("0.#")+" 分  总分 "+match.TotalScore.ToString("0.#")+" 分"+
                 (match.Mode==GameMode.Timed?"  剩余 "+(match.RemainingMs/1000.0).ToString("F1")+" s":match.Mode==GameMode.Challenge?"  连败 "+match.Losses+" 局":"")+
                 (match.Edited?"  已编辑":"");
