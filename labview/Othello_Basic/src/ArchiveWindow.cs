@@ -13,6 +13,7 @@ namespace Othello.Basic {
         readonly Button previous=new Button { Text="上一步", Dock=DockStyle.Fill, Margin=new Padding(3,0,3,6) };
         readonly Button next=new Button { Text="下一步", Dock=DockStyle.Fill, Margin=new Padding(3,0,3,6) };
         readonly List<GameRecord> records;
+        readonly GameMode[] rankModes;
         readonly ComboBox mode=new ComboBox { DropDownStyle=ComboBoxStyle.DropDownList, Width=156 };
         readonly ListView standings=new ListView { Dock=DockStyle.Fill, View=View.Details, FullRowSelect=true };
         readonly Button export=new Button { Text="导出 CSV", Size=new Size(110,40) };
@@ -25,6 +26,8 @@ namespace Othello.Basic {
             Font=new Font("Microsoft YaHei UI",10);
             int unreadable;
             records=archive.Load(out unreadable);
+            rankModes=Enum.GetValues(typeof(GameMode)).Cast<GameMode>()
+                .Where(value=>value!=GameMode.Ai||records.Exists(record=>record.Mode==GameMode.Ai)).ToArray();
             if(unreadable>0) Text+="（跳过 "+unreadable+" 个无法读取的记录）";
             var tabs=new TabControl { Dock=DockStyle.Fill };
             var replay=new TabPage("棋局回放"); var ranking=new TabPage("排行榜");
@@ -62,7 +65,7 @@ namespace Othello.Basic {
             var filters=new FlowLayoutPanel { Dock=DockStyle.Top, Height=56, Padding=new Padding(5) };
             mode.Margin=source.Margin=new Padding(3,10,5,0);
             OthelloPanel.StyleButton(export);
-            mode.Items.AddRange(Enum.GetValues(typeof(GameMode)).Cast<GameMode>().Select(GameArchive.ModeName).ToArray());
+            mode.Items.AddRange(rankModes.Select(GameArchive.ModeName).ToArray());
             source.Items.AddRange(new object[]{"实体棋盘","离线模拟"});
             filters.Controls.Add(mode); filters.Controls.Add(source); filters.Controls.Add(export);
             standings.Columns.Add("排名",50); standings.Columns.Add("结束时间",185); standings.Columns.Add("本局得分 (分)",106);
@@ -97,7 +100,7 @@ namespace Othello.Basic {
                 game.Complete?"开局至终局":"连接期间记录，可能缺少步骤");
         }
         List<GameRecord> CurrentRank() {
-            return GameArchive.Rank(records.Where(record=>record.Simulated==(source.SelectedIndex==1)),(GameMode)mode.SelectedIndex);
+            return GameArchive.Rank(records.Where(record=>record.Simulated==(source.SelectedIndex==1)),rankModes[mode.SelectedIndex]);
         }
         void RenderRank() {
             if(mode.SelectedIndex<0 || source.SelectedIndex<0) return;

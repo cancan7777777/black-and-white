@@ -108,7 +108,8 @@ namespace Othello.Basic {
             switch(mode) {
                 case GameMode.Challenge: return "闯关";
                 case GameMode.Timed: return "计时";
-                case GameMode.Ai: return "AI 对弈（STM32）";
+                case GameMode.Ai: return "旧版板载 AI";
+                case GameMode.ExternalAi: return "AI 对弈";
                 default: return "普通";
             }
         }

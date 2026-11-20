@@ -74,8 +74,12 @@ static void finish(OtMatch *m, OtResult reason)
 
 uint8_t ot_match_computer_turn(const OtMatch *m)
 {
-    return (uint8_t)((m->mode == OT_CHALLENGE || m->mode == OT_AI) &&
-                     m->phase == OT_RUNNING && m->game.turn == OT_WHITE);
+    return (uint8_t)(m->mode == OT_CHALLENGE && m->phase == OT_RUNNING && m->game.turn == OT_WHITE);
+}
+
+uint8_t ot_match_external_turn(const OtMatch *m)
+{
+    return (uint8_t)(m->mode == OT_EXTERNAL_AI && m->phase == OT_RUNNING && m->game.turn == OT_WHITE);
 }
 
 static uint8_t apply_move(OtMatch *m, uint8_t row, uint8_t col)
@@ -136,7 +140,13 @@ uint8_t ot_match_tick(OtMatch *m, uint32_t now)
 
 uint8_t ot_match_move(OtMatch *m, uint8_t row, uint8_t col)
 {
-    if (m->phase != OT_RUNNING || ot_match_computer_turn(m)) return 0u;
+    if (m->phase != OT_RUNNING || ot_match_computer_turn(m) || ot_match_external_turn(m)) return 0u;
+    return apply_move(m, row, col);
+}
+
+uint8_t ot_match_ai_move(OtMatch *m, uint8_t row, uint8_t col)
+{
+    if (!ot_match_external_turn(m)) return 0u;
     return apply_move(m, row, col);
 }
 
@@ -156,7 +166,7 @@ uint8_t ot_match_control(OtMatch *m, OtControl action, uint32_t value, uint32_t 
         new_round(m);
         return 1u;
     case OT_SET_MODE:
-        if (value > OT_AI || seconds == 0u || seconds > OT_MAX_SECONDS) return 0u;
+        if ((value > OT_TIMED && value != OT_EXTERNAL_AI) || seconds == 0u || seconds > OT_MAX_SECONDS) return 0u;
         m->mode = (OtMode)value;
         m->limit_seconds = (uint16_t)seconds;
         clear_scores(m);

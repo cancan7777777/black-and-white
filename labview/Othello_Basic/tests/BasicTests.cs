@@ -26,6 +26,10 @@ class BasicTests {
     static void Reject(Action action,string description) { bool threw=false;try{action();}catch(ArgumentException){threw=true;}catch(FormatException){threw=true;}Check(threw,description); }
     static string InitialBoard() { char[] b=new string('0',64).ToCharArray();b[27]='2';b[28]='1';b[35]='1';b[36]='2';return new string(b); }
     static string State(uint seq,uint rev,string cells,int turn,int status,int black,int white) { return Protocol.Frame("@STATE,"+seq+","+rev+","+turn+","+status+","+black+","+white+","+cells); }
+    static string ExternalState(uint seq,BoardState board) {
+        return Protocol.Frame("@GAME5,"+seq+","+board.Revision+","+board.Turn+",0,"+board.Black+","+board.White+","+
+            board.Cells+","+(int)board.Match.Mode+",0,"+board.Match.Round+",0,0,0,0,0,0,180,0,"+board.Black*2+",0");
+    }
     static T FindControl<T>(Control parent, Predicate<T> match) where T : Control {
         foreach (Control child in parent.Controls) {
             T typed = child as T;
@@ -82,10 +86,8 @@ class BasicTests {
             WaitForPanel(() => board.Board.Match.Phase == GamePhase.Running && move.Enabled,"embedded resume restores moves");
             var modes=FindControl<ComboBox>(panel, control=>control.Items.Contains("闯关"));
             var apply=FindControl<Button>(panel, button=>button.Text=="设定模式");
-            Check(modes.Items.Contains("AI 对弈（STM32）") && modes.Items.Contains("AI 对弈（EN）"),
-                "both AI entries use the same display name pattern");
-            Check(modes.ClientSize.Width>=TextRenderer.MeasureText("AI 对弈（STM32）",modes.Font).Width+
-                SystemInformation.VerticalScrollBarWidth,"the longer entry fits at the minimum panel size");
+            Check(modes.Items.Count==4 && modes.Items.Contains("AI 对弈"),
+                "there is one AI entry alongside casual, challenge and timed modes");
             modes.SelectedIndex=1; apply.PerformClick();
             WaitForPanel(()=>board.Board.ComputerOpponent && board.Board.Match.Stage==1 && board.Board.Match.Score==1m && move.Enabled,
                 "challenge panel starts at stage one with the half-point coefficient");
@@ -93,13 +95,6 @@ class BasicTests {
             WaitForPanel(()=>board.Board.ComputerTurn && !move.Enabled,"panel waits for the computer after the black move");
             WaitForPanel(()=>board.Board.Turn==1 && board.Board.Black==3 && board.Board.White==3 && move.Enabled,
                 "panel receives the automatic white move without another click");
-            modes.SelectedItem="AI 对弈（STM32）";apply.PerformClick();
-            WaitForPanel(()=>board.Board.Match.Mode==GameMode.Ai && board.Board.Match.Stage==0 && move.Enabled,
-                "standalone STM32 AI has its own selectable mode");
-            move.PerformClick();
-            WaitForPanel(()=>board.Board.ComputerTurn && !move.Enabled,"standalone STM32 AI owns white's turn");
-            WaitForPanel(()=>board.Board.Turn==1 && board.Board.Black==3 && board.Board.White==3 && move.Enabled,
-                "standalone mode answers the player's opening move");
             finish.PerformClick();
             Check(panel.Stopped && board.Board == null && !move.Enabled, "panel finish stops and clears the session");
         }
@@ -190,6 +185,50 @@ class BasicTests {
         }
     }
 
+    static void CheckPhysicalEgaroucid(string enginePath,GameArchive archive) {
+        var serial=new FakeTransport();
+        using(var model=new HostSession())
+        using(var panel=new OthelloPanel(archive,settings=>serial)) {
+            model.Connect(new SimulatedTransport());
+            panel.CreateControl();
+            panel.Start();
+            FindControl<ComboBox>(panel,c=>c.Items.Contains("真实串口")).SelectedItem="真实串口";
+            FindControl<ComboBox>(panel,c=>c.DropDownStyle==ComboBoxStyle.DropDown).Text="COM37";
+            FindControl<Button>(panel,b=>b.Text=="连接").PerformClick();
+            var move=FindControl<Button>(panel,b=>b.Text=="确认落子");
+            var refresh=FindControl<Button>(panel,b=>b.Text=="刷新棋盘");
+            var board=FindControl<BoardView>(panel,b=>true);
+            WaitForPanel(()=>serial.Last!=null && serial.Last.StartsWith("@SYNC5,1,"),"serial panel requests the current firmware protocol");
+            serial.Inject(ExternalState(1,model.State));
+            WaitForPanel(()=>board.Board!=null && move.Enabled,"serial panel confirms the ordinary boot board");
+
+            File.WriteAllText(EgaroucidEngine.ConfigPath,Path.Combine(Path.GetTempPath(),Guid.NewGuid().ToString("N")+".exe"));
+            model.Control(GameControl.Mode,GameMode.ExternalAi,180);
+            serial.Inject(ExternalState(0,model.State));
+            WaitForPanel(()=>board.Board.Match.Mode==GameMode.ExternalAi,"S15 mode broadcast enters the same AI mode");
+            model.Move(2,3);
+            serial.Inject(ExternalState(0,model.State));
+            WaitForPanel(()=>board.Board.ExternalAiTurn && !move.Enabled &&
+                FindControl<Label>(panel,l=>l.Text.Contains("EN 未落子"))!=null,"without EN the physical white turn stays reserved");
+            Check(serial.Last.StartsWith("@SYNC5,1,") && board.Board.Revision==3,"missing engine sends no fallback move");
+
+            File.WriteAllText(EgaroucidEngine.ConfigPath,enginePath);
+            refresh.PerformClick();
+            serial.Inject(ExternalState(2,model.State));
+            WaitForPanel(()=>serial.Last.StartsWith("@AI,3,3,"),"real EN returns a versioned white move after S15",12000);
+            string[] command=Protocol.Fields(serial.Last);
+            uint before=model.State.Revision;
+            model.EngineMove((int)Protocol.Number(command[3]),(int)Protocol.Number(command[4]));
+            Check(model.State.Revision!=before && model.State.Turn==1,"the real device state machine accepts the EN move");
+            serial.Inject(ExternalState(3,model.State));
+            WaitForPanel(()=>board.Board.Turn==1 && board.Board.Black==3 && board.Board.White==3 && move.Enabled,
+                "the verified reply returns control to black");
+            model.Control(GameControl.Mode,GameMode.Casual,180);
+            serial.Inject(ExternalState(0,model.State));
+            WaitForPanel(()=>board.Board.Match.Mode==GameMode.Casual && move.Enabled,"S15 exit restores ordinary play");
+        }
+    }
+
     static void CheckEgaroucid(string enginePath) {
         string config=EgaroucidEngine.ConfigPath;
         byte[] previousConfig=File.Exists(config)?File.ReadAllBytes(config):null;
@@ -207,12 +246,12 @@ class BasicTests {
                 var resume=FindControl<Button>(panel,b=>b.Text=="继续");
                 var start=FindControl<Button>(panel,b=>b.Text=="开始");
                 var board=FindControl<BoardView>(panel,b=>true);
-                var modes=FindControl<ComboBox>(panel,c=>c.Items.Contains("AI 对弈（EN）"));
+                var modes=FindControl<ComboBox>(panel,c=>c.Items.Contains("AI 对弈"));
                 var row=FindControl<NumericUpDown>(panel,n=>n.Maximum==8);
                 var col=FindControl<NumericUpDown>(panel,n=>n.Maximum==8&&n!=row);
                 connect.PerformClick();
                 WaitForPanel(()=>board.Board!=null && apply.Enabled,"offline board connects before Egaroucid");
-                modes.SelectedItem="AI 对弈（EN）";
+                modes.SelectedItem="AI 对弈";
                 File.WriteAllText(config,Path.Combine(folder,"missing.exe"));
                 uint openingRevision=board.Board.Revision;
                 apply.PerformClick();
@@ -222,10 +261,11 @@ class BasicTests {
 
                 File.WriteAllText(config,enginePath);
                 apply.PerformClick();
-                WaitForPanel(()=>FindControl<Label>(panel,l=>l.Text.Contains("AI 对弈（EN） · 玩家执黑"))!=null,
-                    "Egaroucid mode activates after the casual board confirms the restart");
+                WaitForPanel(()=>board.Board.Match.Mode==GameMode.ExternalAi &&
+                    FindControl<Label>(panel,l=>l.Text.Contains("AI 对弈 · 玩家执黑"))!=null,
+                    "the single menu entry starts EN on the authoritative game");
                 move.PerformClick();
-                WaitForPanel(()=>board.Board.Turn==2 && !move.Enabled,"white belongs to Egaroucid");
+                WaitForPanel(()=>board.Board.ExternalAiTurn && !move.Enabled,"white belongs to Egaroucid");
                 WaitForUi(160);
                 pause.PerformClick();
                 WaitForPanel(()=>board.Board.Match.Phase==GamePhase.Paused && resume.Enabled,"pause reaches the match while AI mode is enabled");
@@ -280,6 +320,7 @@ class BasicTests {
                 WaitForUi(850);
                 Check(board.Board.Cells==InitialBoard() && board.Board.Turn==1,"no stale AI result reaches the new connection");
             }
+            CheckPhysicalEgaroucid(enginePath,archive);
         } finally {
             if(previousConfig!=null) File.WriteAllBytes(config,previousConfig);
             else if(File.Exists(config)) File.Delete(config);
@@ -294,22 +335,24 @@ class BasicTests {
         using(var host=new HostSession()) {
             var legacy=new FakeTransport();
             host.Connect(legacy);
-            Check(legacy.Last.StartsWith("@SYNC4,1,"),"new host probes keypad AI capability");
+            Check(legacy.Last.StartsWith("@SYNC5,1,"),"new host probes external AI capability");
             legacy.Inject(Protocol.Frame("@ERROR,1,COMMAND"));
-            Check(legacy.Last.StartsWith("@SYNC3,2,"),"keypad AI negotiation falls back to staged scoring");
+            Check(legacy.Last.StartsWith("@SYNC4,2,"),"external AI negotiation falls back to previous firmware");
             legacy.Inject(Protocol.Frame("@ERROR,2,COMMAND"));
-            Check(legacy.Last.StartsWith("@SYNC2,3,"),"stage negotiation falls back to computer opponent");
+            Check(legacy.Last.StartsWith("@SYNC3,3,"),"previous firmware negotiation falls back to staged scoring");
             legacy.Inject(Protocol.Frame("@ERROR,3,COMMAND"));
-            Check(legacy.Last.StartsWith("@SYNC,4,"),"computer negotiation falls back to previous extended protocol");
+            Check(legacy.Last.StartsWith("@SYNC2,4,"),"stage negotiation falls back to computer opponent");
             legacy.Inject(Protocol.Frame("@ERROR,4,COMMAND"));
-            Check(legacy.Last.StartsWith("@GET,5,"),"legacy negotiation falls back to GET");
-            legacy.Inject(State(5,1,InitialBoard(),1,0,2,2));
+            Check(legacy.Last.StartsWith("@SYNC,5,"),"computer negotiation falls back to previous extended protocol");
+            legacy.Inject(Protocol.Frame("@ERROR,5,COMMAND"));
+            Check(legacy.Last.StartsWith("@GET,6,"),"legacy negotiation falls back to GET");
+            legacy.Inject(State(6,1,InitialBoard(),1,0,2,2));
             host.Move(2,3);
-            Check(legacy.Last.StartsWith("@MOVE,6,"),"legacy host move format preserved");
+            Check(legacy.Last.StartsWith("@MOVE,7,"),"legacy host move format preserved");
         }
         using(var host=new HostSession()) {
             host.Connect(new SimulatedTransport());
-            Check(host.State.Match.Mode==GameMode.Casual && host.SupportsKeyboardAi,"advanced default boot game with current capabilities");
+            Check(host.State.Match.Mode==GameMode.Casual && host.SupportsExternalAi,"advanced default boot game with current capabilities");
             host.Control(GameControl.Mode,GameMode.Challenge,180);
             Check(host.State.ComputerOpponent && host.State.Match.Stage==1 && host.State.Match.TotalScore==0m,
                 "human-versus-computer challenge confirmed");
@@ -344,6 +387,7 @@ class BasicTests {
     static void CheckArchive() {
         string folder=Path.Combine(Path.GetDirectoryName(typeof(BasicTests).Assembly.Location),"archive-test-"+Guid.NewGuid().ToString("N"));
         var archive=new GameArchive(folder);
+        var modes=new[]{GameMode.Casual,GameMode.Challenge,GameMode.Timed,GameMode.ExternalAi};
         try {
             using(var host=new HostSession()) {
                 host.Changed+=delegate { archive.Observe(host.State,true); };
@@ -351,7 +395,7 @@ class BasicTests {
                 host.Move(2,3);
                 host.Control(GameControl.End);
                 host.Refresh();
-                foreach(GameMode mode in Enum.GetValues(typeof(GameMode))) {
+                foreach(GameMode mode in modes) {
                     for(int trial=0;trial<5;trial++) {
                         host.Control(GameControl.Mode,mode,1);
                         if(mode==GameMode.Timed) {
@@ -369,7 +413,8 @@ class BasicTests {
                                 }
                                 for(int i=0;i<64 && host.State.Revision==revision;i++) {
                                     int square=(i+trial*7)%64;
-                                    host.Move(square/8,square%8);
+                                    if(host.State.ExternalAiTurn) host.EngineMove(square/8,square%8);
+                                    else host.Move(square/8,square%8);
                                 }
                                 if(host.State.Revision==revision) throw new Exception("Archive test could not find a legal move");
                             }
@@ -380,7 +425,7 @@ class BasicTests {
             }
             int unreadable;
             var reopened=new GameArchive(folder).Load(out unreadable);
-            int savedCount=1+5*Enum.GetValues(typeof(GameMode)).Length;
+            int savedCount=1+5*modes.Length;
             Check(unreadable==0 && reopened.Count==savedCount,"all real simulated rounds reopen with no duplicate on refresh");
             GameRecord exited=reopened.Find(record=>record.Result==GameResult.Exit);
             Check(exited!=null && exited.Complete && exited.Frames.Count==3 && exited.Frames[0].Cells==InitialBoard() &&
@@ -403,7 +448,7 @@ class BasicTests {
                 source.SelectedItem="离线模拟";
                 Check(rank.Items.Count==5 && rank.Items[0].SubItems.Count==6,"ranking window shows simulated scores and timing columns");
             }
-            foreach(GameMode mode in Enum.GetValues(typeof(GameMode))) {
+            foreach(GameMode mode in modes) {
                 var edited=new GameRecord { Mode=mode, Result=GameResult.Board, Score=64, Edited=true };
                 reopened.Add(edited);
                 var rank=GameArchive.Rank(reopened,mode);

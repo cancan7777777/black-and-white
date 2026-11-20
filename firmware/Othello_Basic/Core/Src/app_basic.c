@@ -109,7 +109,7 @@ void AppBasic_HandleKey(char key)
         break;
     case 'C': (void)ot_match_control(&app.match, OT_END, 0u, 0u); break;
     case 'D': toggle_mode(OT_CHALLENGE); break;
-    case '#': toggle_mode(OT_AI); break;
+    case '#': toggle_mode(OT_EXTERNAL_AI); break;
     case '9': toggle_mode(OT_TIMED); break;
     case '0': (void)ot_match_control(&app.match, OT_RESTART, 0u, 0u); break;
     case '*': (void)ot_match_control(&app.match, OT_TOGGLE_EDIT, 0u, 0u); break;

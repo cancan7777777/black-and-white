@@ -8,7 +8,8 @@
 #define OT_MAX_SECONDS 3600u
 #define OT_COMPUTER_DELAY_MS 250u
 
-typedef enum { OT_CASUAL, OT_CHALLENGE, OT_TIMED, OT_AI } OtMode;
+/* Mode value 3 was used by the previous standalone board opponent. */
+typedef enum { OT_CASUAL, OT_CHALLENGE, OT_TIMED, OT_EXTERNAL_AI = 4 } OtMode;
 typedef enum { OT_RUNNING, OT_PAUSED, OT_EDITING, OT_FINISHED } OtPhase;
 typedef enum { OT_RESULT_NONE, OT_RESULT_BOARD, OT_RESULT_TIME, OT_RESULT_EXIT,
                OT_RESULT_WIN, OT_RESULT_OVER } OtResult;
@@ -31,9 +32,11 @@ OtMode ot_match_active_mode(const OtMatch *match);
 /* Returns true when the computer moves or the timer settles the round. */
 uint8_t ot_match_tick(OtMatch *match, uint32_t now);
 uint8_t ot_match_computer_turn(const OtMatch *match);
+uint8_t ot_match_external_turn(const OtMatch *match);
 /* One unit represents half a point. */
 unsigned ot_match_score_half(const OtMatch *match);
 uint8_t ot_match_move(OtMatch *match, uint8_t row, uint8_t col);
+uint8_t ot_match_ai_move(OtMatch *match, uint8_t row, uint8_t col);
 uint8_t ot_match_control(OtMatch *match, OtControl action, uint32_t value, uint32_t seconds);
 uint8_t ot_match_edit(OtMatch *match, uint8_t row, uint8_t col, uint8_t piece);
 

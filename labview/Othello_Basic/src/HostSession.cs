@@ -12,12 +12,13 @@ namespace Othello.Basic {
         DateTime nextPoll;
         int generation;
         string syncCommand;
-        bool pendingRefresh, computerSupported, stagesSupported, keyboardAiSupported, needsSync;
+        bool pendingRefresh, computerSupported, stagesSupported, keyboardAiSupported, externalAiSupported, needsSync;
         public BoardState State { get; private set; }
         public bool Connected { get { return transport!=null; } }
         public bool Waiting { get { return pending!=0; } }
         public bool Synchronized { get { return Connected && State!=null && !needsSync; } }
         public bool SupportsKeyboardAi { get { return Synchronized && keyboardAiSupported; } }
+        public bool SupportsExternalAi { get { return Synchronized && externalAiSupported; } }
         public string Message { get; private set; }
         public event Action Changed;
         public Action<Action> Dispatch = delegate(Action action) { action(); };
@@ -44,8 +45,9 @@ namespace Othello.Basic {
                     needsSync=true;
                     Report(error);
                 }); };
-                State=null; pending=0; pendingRefresh=false; computerSupported=stagesSupported=keyboardAiSupported=false;
-                needsSync=true; syncCommand="@SYNC4";
+                State=null; pending=0; pendingRefresh=false;
+                computerSupported=stagesSupported=keyboardAiSupported=externalAiSupported=false;
+                needsSync=true; syncCommand="@SYNC5";
                 nextPoll=DateTime.UtcNow; lines.Clear();
                 Report("已连接，正在读取完整棋盘"); Refresh();
             } catch { device.Dispose(); transport=null; throw; }
@@ -70,9 +72,15 @@ namespace Othello.Basic {
             RequireSynchronized();
             if(State.Status!=0) throw new InvalidOperationException("本局已结束");
             if(State.Match!=null && State.Match.Phase!=GamePhase.Running) throw new InvalidOperationException("当前状态不能落子");
-            if(State.ComputerTurn) throw new InvalidOperationException("请等待电脑走白");
+            if(State.ComputerTurn || State.ExternalAiTurn) throw new InvalidOperationException("请等待电脑走白");
             CheckCoordinates(row,col);
             Request(string.Format(CultureInfo.InvariantCulture,"{0},{{seq}},{1},{2},{3}",State.Match==null?"@MOVE":"@PLAY",State.Revision,row,col));
+        }
+        internal void EngineMove(int row,int col) {
+            RequireSynchronized();
+            if(!State.ExternalAiTurn) throw new InvalidOperationException("棋盘当前没有等待 EN 落子");
+            CheckCoordinates(row,col);
+            Request(string.Format(CultureInfo.InvariantCulture,"@AI,{{seq}},{0},{1},{2}",State.Revision,row,col));
         }
         static void CheckCoordinates(int row,int col) {
             if(row<0||row>7||col<0||col>7) throw new ArgumentOutOfRangeException("row","坐标必须在 1–8");
@@ -87,7 +95,9 @@ namespace Othello.Basic {
         public void Control(GameControl command, GameMode mode=GameMode.Casual, int limitSeconds=0) {
             RequireAdvanced();
             if(command==GameControl.Mode && mode==GameMode.Ai && !SupportsKeyboardAi)
-                throw new InvalidOperationException("请更新下位机固件以启用 AI 对弈（STM32）");
+                throw new InvalidOperationException("当前固件不支持旧版板载 AI 模式");
+            if(command==GameControl.Mode && mode==GameMode.ExternalAi && !SupportsExternalAi)
+                throw new InvalidOperationException("请更新下位机固件以使用实体键启动 AI 对弈");
             Request(string.Format(CultureInfo.InvariantCulture,"@CTL,{{seq}},{0},{1},{2},{3}",
                 State.Revision,command.ToString().ToUpperInvariant(),(int)mode,limitSeconds));
         }
@@ -114,7 +124,8 @@ namespace Othello.Basic {
             AddLog("RX "+line.TrimEnd());
             try {
                 string[] fields=Protocol.Fields(line);
-                if(fields[0]=="@GAME4" || fields[0]=="@GAME3" || fields[0]=="@GAME2" || fields[0]=="@GAME" || fields[0]=="@STATE") {
+                if(fields[0]=="@GAME5" || fields[0]=="@GAME4" || fields[0]=="@GAME3" || fields[0]=="@GAME2" ||
+                    fields[0]=="@GAME" || fields[0]=="@STATE") {
                     BoardState state=Protocol.ParseState(fields);
                     if(state.Sequence!=0 && state.Sequence!=pending) { Report("忽略不属于当前请求的 STATE"); return; }
                     bool requestedRefresh=state.Sequence!=0 && pendingRefresh;
@@ -124,7 +135,8 @@ namespace Othello.Basic {
                         return;
                     }
                     if(state.Match==null && State!=null && State.Match!=null) return;
-                    if(fields[0]=="@GAME4") keyboardAiSupported=stagesSupported=computerSupported=true;
+                    if(fields[0]=="@GAME5") externalAiSupported=stagesSupported=computerSupported=true;
+                    if(fields[0]=="@GAME4" && !externalAiSupported) keyboardAiSupported=stagesSupported=computerSupported=true;
                     if(fields[0]=="@GAME3") stagesSupported=computerSupported=true;
                     if(fields[0]=="@GAME2") computerSupported=true;
                     state.ComputerOpponent=computerSupported && state.Match!=null &&
@@ -132,7 +144,7 @@ namespace Othello.Basic {
                     State=state;
                     needsSync=false;
                     if(state.Sequence!=0 && state.Sequence==pending) {
-                        if(requestedRefresh) syncCommand=keyboardAiSupported?"@SYNC4":stagesSupported?"@SYNC3":
+                        if(requestedRefresh) syncCommand=externalAiSupported?"@SYNC5":keyboardAiSupported?"@SYNC4":stagesSupported?"@SYNC3":
                             computerSupported?"@SYNC2":state.Match!=null?"@SYNC":"@GET";
                         pending=0;
                     }
@@ -145,7 +157,7 @@ namespace Othello.Basic {
                     if(seq==0 && pending!=0) { Report("下位机报告无序号错误："+reason); return; }
                     if(seq!=0 && pendingRefresh && reason=="COMMAND" && syncCommand!="@GET") {
                         pending=0;
-                        syncCommand=syncCommand=="@SYNC4"?"@SYNC3":syncCommand=="@SYNC3"?"@SYNC2":
+                        syncCommand=syncCommand=="@SYNC5"?"@SYNC4":syncCommand=="@SYNC4"?"@SYNC3":syncCommand=="@SYNC3"?"@SYNC2":
                             syncCommand=="@SYNC2"?"@SYNC":"@GET";
                         Refresh();
                         return;
@@ -171,6 +183,7 @@ namespace Othello.Basic {
                 if(state.Match.Phase==GamePhase.Editing) return "正在编辑棋盘，普通落子已暂停";
             }
             if(state.ComputerTurn) return "电脑执白，正在落子…";
+            if(state.ExternalAiTurn) return "等待 Egaroucid 应手…";
             return state.Status==1 ? "本局结束（一方无合法位置）" : "已同步，等待"+(state.Turn==1?"黑方":"白方")+"落子";
         }
         public void Dispose() { Disconnect(); }

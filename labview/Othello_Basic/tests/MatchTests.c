@@ -114,13 +114,13 @@ static void exercise_hardware_path(void)
     AppBasicPorts ports = { always_ready, capture_frame, NULL, NULL };
     AppBasic_Init(&ports);
     AppBasic_Tick(0u);
-    send_command("@SYNC4,1");
-    check(!strncmp(latest_frame,"@GAME4,1,",9u),"host can negotiate all keypad modes");
+    send_command("@SYNC5,1");
+    check(!strncmp(latest_frame,"@GAME5,1,",9u),"host can negotiate external AI");
     AppBasic_HandleKey('D');
     AppBasic_HandleKey('5');
     AppBasic_Tick(10u);
     AppBasic_GetSnapshot(&snapshot);
-    check(snapshot.game.turn==OT_WHITE && !strncmp(latest_frame,"@GAME4,0,3,2,",13u) &&
+    check(snapshot.game.turn==OT_WHITE && !strncmp(latest_frame,"@GAME5,0,3,2,",13u) &&
         strstr(latest_frame,",180,1,4,0,")!=NULL,"keypad black move publishes the current stage and score");
     AppBasic_HandleKey('5');
     AppBasic_HandleKey('B');
@@ -131,34 +131,45 @@ static void exercise_hardware_path(void)
     AppBasic_Tick(1240u);
     AppBasic_GetSnapshot(&snapshot);
     check(snapshot.game.revision==6u && snapshot.game.turn==OT_BLACK && snapshot.game.black==3u && snapshot.game.white==3u &&
-        !strncmp(latest_frame,"@GAME4,0,6,1,",13u),"after resume, computer plays white and publishes the board without a host move");
+        !strncmp(latest_frame,"@GAME5,0,6,1,",13u),"challenge still plays white without a host move");
 
     AppBasic_HandleKey('D');
     AppBasic_Tick(1250u);
     check(reported_mode()==OT_CASUAL,"S16 toggles an active challenge off");
     AppBasic_HandleKey('#');
     AppBasic_Tick(1260u);
-    check(reported_mode()==OT_AI && strstr(latest_frame,",180,0,4,0,")!=NULL,"S15 starts an unweighted standalone AI round");
+    check(reported_mode()==OT_EXTERNAL_AI && strstr(latest_frame,",180,0,4,0,")!=NULL,"S15 starts external AI mode");
     AppBasic_HandleKey('5');
     AppBasic_Tick(1270u);
     AppBasic_GetSnapshot(&snapshot);
-    check(snapshot.game.turn==OT_WHITE && snapshot.game.black==4u,"black plays on the board without the host");
+    check(snapshot.game.turn==OT_WHITE && snapshot.game.black==4u,"board publishes the black move for EN");
     AppBasic_HandleKey('5');
-    AppBasic_Tick(1520u);
+    AppBasic_Tick(3500u);
+    AppBasic_GetSnapshot(&snapshot);
+    check(snapshot.game.turn==OT_WHITE && snapshot.game.revision==9u,"keypad and board engine cannot play EN's turn");
+    send_command("@PLAY,2,9,2,2");
+    check(strstr(latest_frame,",COMPUTER_TURN,")!=NULL,"human serial moves cannot play EN's turn");
+    send_command("@AI,3,8,2,2");
+    check(strstr(latest_frame,",STALE,")!=NULL,"stale EN result is rejected");
+    send_command("@AI,4,9,0,0");
+    check(strstr(latest_frame,",ILLEGAL,")!=NULL,"illegal EN result is rejected");
+    send_command("@SYNC4,5");
+    check(!strncmp(latest_frame,"@GAME4,5,",9u) && reported_mode()==OT_CASUAL,"old hosts can still read the board");
+    send_command("@SYNC5,6");
+    send_command("@AI,7,9,2,2");
     AppBasic_GetSnapshot(&snapshot);
     check(snapshot.game.turn==OT_BLACK && snapshot.game.black==3u && snapshot.game.white==3u &&
-        reported_mode()==OT_AI,"STM32 supplies the white move and broadcasts it");
-    send_command("@SYNC3,2");
-    check(!strncmp(latest_frame,"@GAME3,2,",9u) && reported_mode()==OT_CASUAL,"old hosts receive a compatible AI board");
-    send_command("@SYNC4,3");
+        reported_mode()==OT_EXTERNAL_AI,"firmware confirms the legal EN move");
+    send_command("@AI,8,10,0,0");
+    check(strstr(latest_frame,",NOT_AI_TURN,")!=NULL,"EN cannot play black's turn");
     AppBasic_HandleKey('#');
-    AppBasic_Tick(1530u);
+    AppBasic_Tick(3510u);
     check(reported_mode()==OT_CASUAL,"S15 toggles AI off");
     AppBasic_HandleKey('9');
-    AppBasic_Tick(1540u);
+    AppBasic_Tick(3520u);
     check(reported_mode()==OT_TIMED,"S11 keeps the keypad timer available");
     AppBasic_HandleKey('9');
-    AppBasic_Tick(1550u);
+    AppBasic_Tick(3530u);
     check(reported_mode()==OT_CASUAL,"S11 toggles timed mode off");
 }
 

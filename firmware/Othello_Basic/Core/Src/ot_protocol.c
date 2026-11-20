@@ -22,8 +22,8 @@ int ot_state(const OtGame *g, uint32_t seq, char *out, size_t cap)
 
 int ot_match_state(const OtMatch *m, OtStateFormat format, uint32_t seq, char *out, size_t cap)
 {
-    static const char *const tags[] = { "@STATE", "@GAME", "@GAME2", "@GAME3", "@GAME4" };
-    OtMode wire_mode = m->mode == OT_AI && format < OT_FORMAT_KEYBOARD_AI ? OT_CASUAL : m->mode;
+    static const char *const tags[] = { "@STATE", "@GAME", "@GAME2", "@GAME3", "@GAME4", "@GAME5" };
+    OtMode wire_mode = m->mode == OT_EXTERNAL_AI && format < OT_FORMAT_EXTERNAL_AI ? OT_CASUAL : m->mode;
     int base, n;
     if (format == OT_FORMAT_BASIC) return ot_state(&m->game, seq, out, cap);
     base = state_payload(&m->game, tags[format], seq, out, cap);
@@ -53,7 +53,7 @@ int ot_match_command(OtMatch *m, OtStateFormat *format, const char *line, char *
     unsigned count = 1, action;
     uint16_t crc;
     uint32_t seq = 0, revision, a, b, piece;
-    uint8_t legacy, move;
+    uint8_t legacy, move, ai_move;
     if (n >= sizeof(buf)) return err(0, "LENGTH", out, cap);
     memcpy(buf, line, n + 1u);
     while (n && (buf[n-1] == '\n' || buf[n-1] == '\r')) buf[--n] = 0;
@@ -75,13 +75,15 @@ int ot_match_command(OtMatch *m, OtStateFormat *format, const char *line, char *
         else if (!strcmp(buf, "@SYNC2")) reply = OT_FORMAT_COMPUTER;
         else if (!strcmp(buf, "@SYNC3")) reply = OT_FORMAT_STAGES;
         else if (!strcmp(buf, "@SYNC4")) reply = OT_FORMAT_KEYBOARD_AI;
+        else if (!strcmp(buf, "@SYNC5")) reply = OT_FORMAT_EXTERNAL_AI;
         else return err(seq, "COMMAND", out, cap);
         *format = reply == OT_FORMAT_COMPUTER ? OT_FORMAT_ADVANCED : reply;
         return ot_match_state(m, reply, seq, out, cap);
     }
 
     legacy = !strcmp(buf, "@MOVE");
-    move = legacy || !strcmp(buf, "@PLAY");
+    ai_move = !strcmp(buf, "@AI");
+    move = legacy || !strcmp(buf, "@PLAY") || ai_move;
     if (!move && strcmp(buf, "@CTL") && strcmp(buf, "@EDIT")) return err(seq, "COMMAND", out, cap);
     if (count != (move ? 5u : 6u) || !number(fields[2], &revision)) return err(seq, "FORMAT", out, cap);
     if (revision != m->game.revision) return err(seq, "STALE", out, cap);
@@ -96,8 +98,14 @@ int ot_match_command(OtMatch *m, OtStateFormat *format, const char *line, char *
             return err(seq, "FORMAT", out, cap);
         if (move) {
             if (m->phase != OT_RUNNING) return err(seq, "NOT_RUNNING", out, cap);
-            if (ot_match_computer_turn(m)) return err(seq, "COMPUTER_TURN", out, cap);
-            if (!ot_match_move(m, (uint8_t)a, (uint8_t)b)) return err(seq, "ILLEGAL", out, cap);
+            if (ai_move) {
+                if (!ot_match_external_turn(m)) return err(seq, "NOT_AI_TURN", out, cap);
+                if (!ot_match_ai_move(m, (uint8_t)a, (uint8_t)b)) return err(seq, "ILLEGAL", out, cap);
+            } else {
+                if (ot_match_computer_turn(m) || ot_match_external_turn(m))
+                    return err(seq, "COMPUTER_TURN", out, cap);
+                if (!ot_match_move(m, (uint8_t)a, (uint8_t)b)) return err(seq, "ILLEGAL", out, cap);
+            }
         } else {
             if (!number(fields[5], &piece) || piece > OT_WHITE) return err(seq, "FORMAT", out, cap);
             if (!ot_match_edit(m, (uint8_t)a, (uint8_t)b, (uint8_t)piece)) return err(seq, "NOT_EDITING", out, cap);
