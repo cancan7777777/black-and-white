@@ -4,18 +4,20 @@ using System.Globalization;
 
 namespace Othello.Basic {
     public sealed class HostSession : IDisposable {
+        enum RequestKind { Command, Refresh, Poll }
         ITransport transport;
         readonly LineBuffer lines=new LineBuffer();
         readonly Queue<string> log=new Queue<string>();
-        uint nextSequence=1, pending;
+        uint nextSequence=1, pending, supersededPoll;
+        RequestKind pendingKind;
         DateTime deadline;
         DateTime nextPoll;
         int generation;
         string syncCommand;
-        bool pendingRefresh, computerSupported, stagesSupported, keyboardAiSupported, externalAiSupported, needsSync;
+        bool computerSupported, stagesSupported, keyboardAiSupported, externalAiSupported, needsSync;
         public BoardState State { get; private set; }
         public bool Connected { get { return transport!=null; } }
-        public bool Waiting { get { return pending!=0; } }
+        public bool Waiting { get { return pending!=0 && pendingKind!=RequestKind.Poll; } }
         public bool Synchronized { get { return Connected && State!=null && !needsSync; } }
         public bool SupportsKeyboardAi { get { return Synchronized && keyboardAiSupported; } }
         public bool SupportsExternalAi { get { return Synchronized && externalAiSupported; } }
@@ -45,7 +47,7 @@ namespace Othello.Basic {
                     needsSync=true;
                     Report(error);
                 }); };
-                State=null; pending=0; pendingRefresh=false;
+                State=null;
                 computerSupported=stagesSupported=keyboardAiSupported=externalAiSupported=false;
                 needsSync=true; syncCommand="@SYNC6";
                 nextPoll=DateTime.UtcNow; lines.Clear();
@@ -53,21 +55,28 @@ namespace Othello.Basic {
             } catch { device.Dispose(); transport=null; throw; }
         }
         public void Disconnect() {
-            generation++; pending=0; State=null; needsSync=true; lines.Clear();
+            generation++; pending=supersededPoll=0; State=null; needsSync=true; lines.Clear();
             ITransport old=transport; transport=null;
             if(old!=null) old.Dispose();
             Message="未连接"; Notify();
         }
-        void Request(string body,bool refreshing=false) {
+        void Request(string body,RequestKind kind=RequestKind.Command) {
             if(transport==null) throw new InvalidOperationException("请先连接");
-            if(pending!=0) throw new InvalidOperationException("正在等待下位机确认，请勿重复发送");
+            if(Waiting || (kind==RequestKind.Poll && pending!=0))
+                throw new InvalidOperationException("正在等待下位机确认，请勿重复发送");
+            // A read-only poll can be superseded. Its reply must not replace the player's confirmed action.
+            if(pending!=0) supersededPoll=pending;
             uint seq=nextSequence++; if(nextSequence==0) nextSequence=1;
-            pending=seq; pendingRefresh=refreshing; deadline=DateTime.UtcNow.AddMilliseconds(1500);
+            if(seq==supersededPoll) supersededPoll=0;
+            pending=seq; pendingKind=kind; deadline=DateTime.UtcNow.AddMilliseconds(1500);
             string frame=Protocol.Frame(body.Replace("{seq}",seq.ToString(CultureInfo.InvariantCulture)));
-            AddLog("TX "+frame.TrimEnd());
-            try { transport.Send(frame); Notify(); } catch { pending=0; needsSync=true; throw; }
+            if(kind!=RequestKind.Poll) AddLog("TX "+frame.TrimEnd());
+            try {
+                transport.Send(frame);
+                if(kind!=RequestKind.Poll) Notify();
+            } catch { pending=0; needsSync=true; throw; }
         }
-        public void Refresh() { Request(syncCommand+",{seq}",true); }
+        public void Refresh() { Request(syncCommand+",{seq}",RequestKind.Refresh); }
         public void Move(int row,int col) {
             RequireSynchronized();
             if(State.Status!=0) throw new InvalidOperationException("本局已结束");
@@ -110,6 +119,7 @@ namespace Othello.Basic {
         public void Tick() {
             DateTime now=DateTime.UtcNow;
             if(pending!=0 && now>=deadline) {
+                if(pendingKind==RequestKind.Poll) supersededPoll=pending;
                 pending=0;needsSync=true;
                 Report("等待棋盘同步超时，请刷新棋盘或核对串口设置");
             }
@@ -117,18 +127,21 @@ namespace Othello.Basic {
             bool timed=State!=null && State.Match!=null && State.Match.Mode==GameMode.Timed && State.Match.Phase==GamePhase.Running;
             if(Connected && pending==0 && (computer || timed) && now>=nextPoll) {
                 nextPoll=now.AddMilliseconds(computer?150:500);
-                try { Refresh(); } catch(Exception error) { Report(error.Message); }
+                try { Request(syncCommand+",{seq}",RequestKind.Poll); } catch(Exception error) { Report(error.Message); }
             }
         }
         void OnLine(string line) {
-            AddLog("RX "+line.TrimEnd());
             try {
                 string[] fields=Protocol.Fields(line);
                 if(fields[0]=="@GAME6" || fields[0]=="@GAME5" || fields[0]=="@GAME4" || fields[0]=="@GAME3" || fields[0]=="@GAME2" ||
                     fields[0]=="@GAME" || fields[0]=="@STATE") {
                     BoardState state=Protocol.ParseState(fields);
+                    if(state.Sequence!=0 && state.Sequence==supersededPoll) return;
+                    bool poll=state.Sequence!=0 && state.Sequence==pending && pendingKind==RequestKind.Poll;
+                    bool announce=!poll || !Synchronized || state.Revision!=State.Revision;
+                    if(announce) AddLog("RX "+line.TrimEnd());
                     if(state.Sequence!=0 && state.Sequence!=pending) { Report("忽略不属于当前请求的 STATE"); return; }
-                    bool requestedRefresh=state.Sequence!=0 && pendingRefresh;
+                    bool requestedRefresh=state.Sequence!=0 && pendingKind!=RequestKind.Command;
                     if(State!=null && state.Revision<State.Revision && !requestedRefresh) {
                         if(state.Sequence!=0) { pending=0;needsSync=true; }
                         Report("忽略旧棋盘版本，板卡重启后可刷新棋盘");
@@ -148,14 +161,16 @@ namespace Othello.Basic {
                             computerSupported?"@SYNC2":state.Match!=null?"@SYNC":"@GET";
                         pending=0;
                     }
-                    Message=Describe(state);
+                    if(announce) Message=Describe(state);
                     Notify();
                 } else if(fields[0]=="@ERROR" && fields.Length==3) {
                     uint seq=Protocol.Number(fields[1]);
+                    if(seq!=0 && seq==supersededPoll) return;
+                    AddLog("RX "+line.TrimEnd());
                     if(seq!=pending && seq!=0) { Report("忽略旧请求 ERROR"); return; }
                     string reason=fields[2];
                     if(seq==0 && pending!=0) { Report("下位机报告无序号错误："+reason); return; }
-                    if(seq!=0 && pendingRefresh && reason=="COMMAND" && syncCommand!="@GET") {
+                    if(seq!=0 && pendingKind!=RequestKind.Command && reason=="COMMAND" && syncCommand!="@GET") {
                         pending=0;
                         syncCommand=syncCommand=="@SYNC6"?"@SYNC5":syncCommand=="@SYNC5"?"@SYNC4":syncCommand=="@SYNC4"?"@SYNC3":syncCommand=="@SYNC3"?"@SYNC2":
                             syncCommand=="@SYNC2"?"@SYNC":"@GET";
@@ -167,8 +182,14 @@ namespace Othello.Basic {
                     Report(reason=="ILLEGAL"?"非法落子：必须至少翻转对方 1 枚棋子":reason=="STALE"?"版本已过期，正在刷新棋盘":
                         reason=="COMPUTER_TURN"?"请等待电脑走白":"下位机错误："+reason);
                     if(reason=="STALE") Refresh();
-                } else Report("忽略未知或格式错误的响应");
-            } catch(FormatException ex) { Report(ex.Message); }
+                } else {
+                    AddLog("RX "+line.TrimEnd());
+                    Report("忽略未知或格式错误的响应");
+                }
+            } catch(FormatException ex) {
+                AddLog("RX "+line.TrimEnd());
+                Report(ex.Message);
+            }
         }
         static string Describe(BoardState state) {
             if(state.Match!=null) {
