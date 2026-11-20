@@ -13,7 +13,7 @@ namespace Othello.Basic {
         readonly Button previous=new Button { Text="上一步", Dock=DockStyle.Fill, Margin=new Padding(3,0,3,6) };
         readonly Button next=new Button { Text="下一步", Dock=DockStyle.Fill, Margin=new Padding(3,0,3,6) };
         readonly List<GameRecord> records;
-        readonly ComboBox mode=new ComboBox { DropDownStyle=ComboBoxStyle.DropDownList, Width=110 };
+        readonly ComboBox mode=new ComboBox { DropDownStyle=ComboBoxStyle.DropDownList, Width=156 };
         readonly ListView standings=new ListView { Dock=DockStyle.Fill, View=View.Details, FullRowSelect=true };
         readonly Button export=new Button { Text="导出 CSV", Size=new Size(110,40) };
         readonly ComboBox source=new ComboBox { DropDownStyle=ComboBoxStyle.DropDownList, Width=110 };

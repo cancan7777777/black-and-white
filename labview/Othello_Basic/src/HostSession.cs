@@ -87,7 +87,7 @@ namespace Othello.Basic {
         public void Control(GameControl command, GameMode mode=GameMode.Casual, int limitSeconds=0) {
             RequireAdvanced();
             if(command==GameControl.Mode && mode==GameMode.Ai && !SupportsKeyboardAi)
-                throw new InvalidOperationException("请更新下位机固件以启用 STM32 AI 对弈");
+                throw new InvalidOperationException("请更新下位机固件以启用 AI 对弈（STM32）");
             Request(string.Format(CultureInfo.InvariantCulture,"@CTL,{{seq}},{0},{1},{2},{3}",
                 State.Revision,command.ToString().ToUpperInvariant(),(int)mode,limitSeconds));
         }

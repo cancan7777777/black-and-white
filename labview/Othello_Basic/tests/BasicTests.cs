@@ -82,6 +82,10 @@ class BasicTests {
             WaitForPanel(() => board.Board.Match.Phase == GamePhase.Running && move.Enabled,"embedded resume restores moves");
             var modes=FindControl<ComboBox>(panel, control=>control.Items.Contains("闯关"));
             var apply=FindControl<Button>(panel, button=>button.Text=="设定模式");
+            Check(modes.Items.Contains("AI 对弈（STM32）") && modes.Items.Contains("AI 对弈（EN）"),
+                "both AI entries use the same display name pattern");
+            Check(modes.ClientSize.Width>=TextRenderer.MeasureText("AI 对弈（STM32）",modes.Font).Width+
+                SystemInformation.VerticalScrollBarWidth,"the longer entry fits at the minimum panel size");
             modes.SelectedIndex=1; apply.PerformClick();
             WaitForPanel(()=>board.Board.ComputerOpponent && board.Board.Match.Stage==1 && board.Board.Match.Score==1m && move.Enabled,
                 "challenge panel starts at stage one with the half-point coefficient");
@@ -89,7 +93,7 @@ class BasicTests {
             WaitForPanel(()=>board.Board.ComputerTurn && !move.Enabled,"panel waits for the computer after the black move");
             WaitForPanel(()=>board.Board.Turn==1 && board.Board.Black==3 && board.Board.White==3 && move.Enabled,
                 "panel receives the automatic white move without another click");
-            modes.SelectedItem="STM32 AI";apply.PerformClick();
+            modes.SelectedItem="AI 对弈（STM32）";apply.PerformClick();
             WaitForPanel(()=>board.Board.Match.Mode==GameMode.Ai && board.Board.Match.Stage==0 && move.Enabled,
                 "standalone STM32 AI has its own selectable mode");
             move.PerformClick();
@@ -203,12 +207,12 @@ class BasicTests {
                 var resume=FindControl<Button>(panel,b=>b.Text=="继续");
                 var start=FindControl<Button>(panel,b=>b.Text=="开始");
                 var board=FindControl<BoardView>(panel,b=>true);
-                var modes=FindControl<ComboBox>(panel,c=>c.Items.Contains("Egaroucid"));
+                var modes=FindControl<ComboBox>(panel,c=>c.Items.Contains("AI 对弈（EN）"));
                 var row=FindControl<NumericUpDown>(panel,n=>n.Maximum==8);
                 var col=FindControl<NumericUpDown>(panel,n=>n.Maximum==8&&n!=row);
                 connect.PerformClick();
                 WaitForPanel(()=>board.Board!=null && apply.Enabled,"offline board connects before Egaroucid");
-                modes.SelectedItem="Egaroucid";
+                modes.SelectedItem="AI 对弈（EN）";
                 File.WriteAllText(config,Path.Combine(folder,"missing.exe"));
                 uint openingRevision=board.Board.Revision;
                 apply.PerformClick();
@@ -218,7 +222,7 @@ class BasicTests {
 
                 File.WriteAllText(config,enginePath);
                 apply.PerformClick();
-                WaitForPanel(()=>FindControl<Label>(panel,l=>l.Text.Contains("Egaroucid · 玩家执黑"))!=null,
+                WaitForPanel(()=>FindControl<Label>(panel,l=>l.Text.Contains("AI 对弈（EN） · 玩家执黑"))!=null,
                     "Egaroucid mode activates after the casual board confirms the restart");
                 move.PerformClick();
                 WaitForPanel(()=>board.Board.Turn==2 && !move.Enabled,"white belongs to Egaroucid");
