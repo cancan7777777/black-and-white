@@ -4,12 +4,13 @@ using System.Globalization;
 using System.Text;
 
 namespace Othello.Basic {
-    public enum GameMode { Casual, Challenge, Timed }
+    public enum GameMode { Casual, Challenge, Timed, Ai, ExternalAi }
     public enum GamePhase { Running, Paused, Editing, Finished }
     public enum GameResult { None, Board, Time, Exit, Win, Over }
     public enum GameControl { Start, Pause, Resume, End, Restart, Mode, Edit }
     public sealed class MatchState {
         public GameMode Mode { get; internal set; }
+        public GameMode ActiveMode { get; internal set; }
         public GamePhase Phase { get; internal set; }
         public GameResult Result { get; internal set; }
         public uint Round { get; internal set; }
@@ -34,6 +35,8 @@ namespace Othello.Basic {
         public MatchState Match { get; internal set; }
         public bool ComputerOpponent { get; internal set; }
         public bool ComputerTurn { get { return ComputerOpponent && Turn==2 && Match.Phase==GamePhase.Running; } }
+        public bool ExternalAiTurn { get { return Match!=null && Match.Mode==GameMode.ExternalAi &&
+            Match.Phase==GamePhase.Running && Status==0 && Turn==2; } }
         public BoardState(uint seq, uint revision, int turn, int status, int black, int white, string cells) {
             Sequence=seq; Revision=revision; Turn=turn; Status=status; Black=black; White=white; Cells=cells;
         }
@@ -72,7 +75,9 @@ namespace Othello.Basic {
             return value;
         }
         public static BoardState ParseState(string[] f) {
-            bool staged=f.Length==21 && f[0]=="@GAME3";
+            bool keyboardAi=f.Length==21 && f[0]=="@GAME4";
+            bool externalAi=f.Length==21 && f[0]=="@GAME5";
+            bool staged=keyboardAi || externalAi || (f.Length==21 && f[0]=="@GAME3");
             bool advanced=staged || (f.Length==18 && (f[0]=="@GAME" || f[0]=="@GAME2"));
             if(!advanced && (f.Length!=8 || f[0]!="@STATE")) throw new FormatException("棋盘帧字段错误");
             uint seq=Number(f[1]), rev=Number(f[2]), turn=Number(f[3]), status=Number(f[4]), black=Number(f[5]), white=Number(f[6]);
@@ -85,7 +90,8 @@ namespace Othello.Basic {
             if(advanced) {
                 uint mode=Number(f[8]), phase=Number(f[9]), round=Number(f[10]), total=Number(f[11]), losses=Number(f[12]);
                 uint remaining=Number(f[13]), elapsed=Number(f[14]), edited=Number(f[15]), result=Number(f[16]), limit=Number(f[17]);
-                if(mode>2 || phase>3 || round==0 || losses>2 || edited>1 || result>5 || limit<1 || limit>3600 ||
+                bool validMode=mode<=2 || (keyboardAi&&mode==3) || (externalAi&&mode==4);
+                if(!validMode || phase>3 || round==0 || losses>2 || edited>1 || result>5 || limit<1 || limit>3600 ||
                     remaining>limit*1000 || (mode!=2 && (remaining!=0 || result==2)) ||
                     (mode!=1 && (losses!=0 || result>3)) || (phase==3)!=(status==1) || (phase==3)!=(result!=0))
                     throw new FormatException("进阶状态不合法");
@@ -96,7 +102,9 @@ namespace Othello.Basic {
                     if((mode==1 ? stage<1 || stage>4 : stage!=0 || totalHalf!=0) || totalHalf>1 || scoreHalf!=expectedScore)
                         throw new FormatException("关卡得分不合法");
                 }
-                state.Match=new MatchState { Mode=(GameMode)mode, Phase=(GamePhase)phase, Round=round, Total=total,
+                GameMode roundMode=(GameMode)mode;
+                GameMode activeMode=(keyboardAi||externalAi) && (result==4 || result==5) ? GameMode.Casual : roundMode;
+                state.Match=new MatchState { Mode=roundMode, ActiveMode=activeMode, Phase=(GamePhase)phase, Round=round, Total=total,
                     Stage=stage, Score=scoreHalf/2m, TotalScore=total+totalHalf/2m,
                     Losses=losses, RemainingMs=remaining, ElapsedMs=elapsed, Edited=edited==1, Result=(GameResult)result, LimitSeconds=limit };
             }

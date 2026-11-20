@@ -97,15 +97,33 @@ namespace Othello.Basic {
         }
 
         public static List<GameRecord> Rank(IEnumerable<GameRecord> records, GameMode mode) {
-            return records.Where(record=>record.Mode==mode && !record.Edited &&
-                (record.Result==GameResult.Board || record.Result==GameResult.Time ||
-                 record.Result==GameResult.Win || record.Result==GameResult.Over))
+            return records.Where(record=>record.Mode==mode && !record.Edited && IsSettled(record.Result))
                 .OrderByDescending(record=>record.Score).ThenBy(record=>record.ElapsedMs)
                 .ThenBy(record=>record.EndedUtc).ThenBy(record=>record.Id,StringComparer.Ordinal).ToList();
         }
 
+        static bool IsSettled(GameResult result) {
+            return result==GameResult.Board || result==GameResult.Time || result==GameResult.Win || result==GameResult.Over;
+        }
+        internal static string Outcome(int black,int white,bool settled) {
+            if(!settled) return "未完成";
+            if(black==white) return "平局";
+            return black>white?"黑棋胜":"白棋胜";
+        }
+        internal static string Outcome(GameRecord record) {
+            var final=record.Frames==null?null:record.Frames.LastOrDefault();
+            if(!IsSettled(record.Result) || final==null || final.Status!=1 || final.Cells==null) return "未完成";
+            return Outcome(final.Cells.Count(cell=>cell=='1'),final.Cells.Count(cell=>cell=='2'),true);
+        }
+
         public static string ModeName(GameMode mode) {
-            return mode==GameMode.Challenge ? "闯关" : mode==GameMode.Timed ? "计时" : "普通";
+            switch(mode) {
+                case GameMode.Challenge: return "闯关";
+                case GameMode.Timed: return "计时";
+                case GameMode.Ai: return "旧版板载 AI";
+                case GameMode.ExternalAi: return "AI 对弈";
+                default: return "普通";
+            }
         }
         public static void Export(string file, IEnumerable<GameRecord> records) {
             using(var writer=new StreamWriter(file,false,new UTF8Encoding(true))) {
@@ -113,7 +131,7 @@ namespace Othello.Basic {
                 foreach(GameRecord record in records)
                     writer.WriteLine(string.Format(CultureInfo.InvariantCulture,"{0},{1:O},{2:0.#},{3:0.#},{4:F3},{5},{6}",
                         ModeName(record.Mode),record.EndedUtc.ToLocalTime(),record.Score,record.Total,
-                        record.ElapsedMs/1000.0,record.Simulated?"离线模拟":"实体棋盘",record.Result));
+                        record.ElapsedMs/1000.0,record.Simulated?"离线模拟":"实体棋盘",Outcome(record)));
             }
         }
     }

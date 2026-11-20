@@ -89,21 +89,38 @@ static uint8_t capture_frame(const char *data, size_t length, void *context)
     return 1u;
 }
 
+static void send_command(const char *request)
+{
+    char command[OT_LINE_MAX];
+    snprintf(command, sizeof(command), "%s,%04X\n", request, (unsigned)ot_crc(request, strlen(request)));
+    check(AppBasic_ProcessFrame(command), "serial command accepted by app");
+}
+
+static unsigned reported_mode(void)
+{
+    const char *field = latest_frame;
+    unsigned comma;
+    for (comma = 0u; comma < 8u; ++comma) {
+        field = strchr(field, ',');
+        check(field != NULL, "mode is present in the state frame");
+        ++field;
+    }
+    return (unsigned)strtoul(field, NULL, 10);
+}
+
 static void exercise_hardware_path(void)
 {
-    const char request[] = "@SYNC3,1";
-    char command[32];
     AppBasicSnapshot snapshot;
     AppBasicPorts ports = { always_ready, capture_frame, NULL, NULL };
     AppBasic_Init(&ports);
     AppBasic_Tick(0u);
-    snprintf(command,sizeof(command),"%s,%04X\n",request,(unsigned)ot_crc(request,strlen(request)));
-    check(AppBasic_ProcessFrame(command) && !strncmp(latest_frame,"@GAME3,1,",9u),"host can negotiate staged scoring");
+    send_command("@SYNC5,1");
+    check(!strncmp(latest_frame,"@GAME5,1,",9u),"host can negotiate external AI");
     AppBasic_HandleKey('D');
     AppBasic_HandleKey('5');
     AppBasic_Tick(10u);
     AppBasic_GetSnapshot(&snapshot);
-    check(snapshot.game.turn==OT_WHITE && !strncmp(latest_frame,"@GAME3,0,3,2,",13u) &&
+    check(snapshot.game.turn==OT_WHITE && !strncmp(latest_frame,"@GAME5,0,3,2,",13u) &&
         strstr(latest_frame,",180,1,4,0,")!=NULL,"keypad black move publishes the current stage and score");
     AppBasic_HandleKey('5');
     AppBasic_HandleKey('B');
@@ -114,7 +131,46 @@ static void exercise_hardware_path(void)
     AppBasic_Tick(1240u);
     AppBasic_GetSnapshot(&snapshot);
     check(snapshot.game.revision==6u && snapshot.game.turn==OT_BLACK && snapshot.game.black==3u && snapshot.game.white==3u &&
-        !strncmp(latest_frame,"@GAME3,0,6,1,",13u),"after resume, computer plays white and publishes the board without a host move");
+        !strncmp(latest_frame,"@GAME5,0,6,1,",13u),"challenge still plays white without a host move");
+
+    AppBasic_HandleKey('D');
+    AppBasic_Tick(1250u);
+    check(reported_mode()==OT_CASUAL,"S16 toggles an active challenge off");
+    AppBasic_HandleKey('#');
+    AppBasic_Tick(1260u);
+    check(reported_mode()==OT_EXTERNAL_AI && strstr(latest_frame,",180,0,4,0,")!=NULL,"S15 starts external AI mode");
+    AppBasic_HandleKey('5');
+    AppBasic_Tick(1270u);
+    AppBasic_GetSnapshot(&snapshot);
+    check(snapshot.game.turn==OT_WHITE && snapshot.game.black==4u,"board publishes the black move for EN");
+    AppBasic_HandleKey('5');
+    AppBasic_Tick(3500u);
+    AppBasic_GetSnapshot(&snapshot);
+    check(snapshot.game.turn==OT_WHITE && snapshot.game.revision==9u,"keypad and board engine cannot play EN's turn");
+    send_command("@PLAY,2,9,2,2");
+    check(strstr(latest_frame,",COMPUTER_TURN,")!=NULL,"human serial moves cannot play EN's turn");
+    send_command("@AI,3,8,2,2");
+    check(strstr(latest_frame,",STALE,")!=NULL,"stale EN result is rejected");
+    send_command("@AI,4,9,0,0");
+    check(strstr(latest_frame,",ILLEGAL,")!=NULL,"illegal EN result is rejected");
+    send_command("@SYNC4,5");
+    check(!strncmp(latest_frame,"@GAME4,5,",9u) && reported_mode()==OT_CASUAL,"old hosts can still read the board");
+    send_command("@SYNC5,6");
+    send_command("@AI,7,9,2,2");
+    AppBasic_GetSnapshot(&snapshot);
+    check(snapshot.game.turn==OT_BLACK && snapshot.game.black==3u && snapshot.game.white==3u &&
+        reported_mode()==OT_EXTERNAL_AI,"firmware confirms the legal EN move");
+    send_command("@AI,8,10,0,0");
+    check(strstr(latest_frame,",NOT_AI_TURN,")!=NULL,"EN cannot play black's turn");
+    AppBasic_HandleKey('#');
+    AppBasic_Tick(3510u);
+    check(reported_mode()==OT_CASUAL,"S15 toggles AI off");
+    AppBasic_HandleKey('9');
+    AppBasic_Tick(3520u);
+    check(reported_mode()==OT_TIMED,"S11 keeps the keypad timer available");
+    AppBasic_HandleKey('9');
+    AppBasic_Tick(3530u);
+    check(reported_mode()==OT_CASUAL,"S11 toggles timed mode off");
 }
 
 static void test_stage_scoring(void)
@@ -136,9 +192,13 @@ static void test_stage_scoring(void)
                 m.total*2u+m.total_half_point==accumulated_half,"settled stages advance without duplicate scoring");
         }
     }
-    check(m.result==OT_RESULT_OVER && m.losses==0,"four stages below target end the challenge");
-    check(ot_match_control(&m,OT_START,0u,0u) && m.stage==1u && m.total==0u && m.total_half_point==0u,
-        "starting a new challenge clears points and returns to stage one");
+    check(m.result==OT_RESULT_OVER && m.losses==0 && m.mode==OT_CHALLENGE &&
+        ot_match_active_mode(&m)==OT_CASUAL && ot_match_score_half(&m)==12u,
+        "four stages below target exit challenge while retaining the recorded result and score");
+    check(ot_match_control(&m,OT_START,0u,0u) && m.mode==OT_CASUAL && m.stage==0u && m.total==0u,
+        "the next START after OVER opens an ordinary game");
+    check(ot_match_control(&m,OT_SET_MODE,OT_CHALLENGE,180u) && m.stage==1u &&
+        m.total==0u && m.total_half_point==0u, "entering challenge again clears points and returns to stage one");
     m.edited=1u;
     forced_finish(&m,OT_BLACK);
     check(ot_match_score_half(&m)==0u && m.total==0u,"an edited stage scores no points");
@@ -150,8 +210,12 @@ static void test_stage_scoring(void)
     check(ot_match_control(&m,OT_SET_MODE,OT_CHALLENGE,180u),"reset for exact threshold");
     m.total=186u; m.total_half_point=1u;
     forced_finish(&m,OT_BLACK);
-    check(m.total==188u && m.total_half_point==0u && m.result==OT_RESULT_WIN,"exactly 188 wins");
-    check(ot_match_control(&m,OT_START,0u,0u) && m.total==0u,"restart won session with zero score");
+    check(m.total==188u && m.total_half_point==0u && m.result==OT_RESULT_WIN &&
+        m.mode==OT_CHALLENGE && ot_match_active_mode(&m)==OT_CASUAL,
+        "exactly 188 wins and immediately exits active challenge");
+    check(ot_match_control(&m,OT_RESTART,0u,0u) && m.mode==OT_CASUAL && m.total==0u,
+        "RESTART after WIN opens an ordinary game with zero score");
+    check(ot_match_control(&m,OT_SET_MODE,OT_CHALLENGE,180u),"reset for above threshold");
     m.total=187u;
     forced_finish(&m,OT_BLACK);
     check(m.total==188u && m.total_half_point==1u && m.result==OT_RESULT_WIN,"188.5 also wins");
@@ -203,7 +267,8 @@ int main(void)
     check(m.losses==1 && m.result==OT_RESULT_BOARD,"first loss remains playable");
     check(ot_match_control(&m,OT_START,0u,0u),"start after first loss");
     forced_finish(&m,OT_WHITE);
-    check(m.losses==2 && m.result==OT_RESULT_OVER,"second consecutive loss stops challenge");
+    check(m.losses==2 && m.result==OT_RESULT_OVER && ot_match_active_mode(&m)==OT_CASUAL,
+        "second consecutive loss automatically exits challenge");
     ot_match_init(&m);
     check(ot_match_control(&m,OT_SET_MODE,OT_TIMED,1u),"one-second timer");
     ot_match_tick(&m,UINT32_MAX-500u);

@@ -37,9 +37,11 @@ namespace Othello.Basic {
                 try {
                     var output=process.StandardOutput.ReadToEndAsync();
                     var errors=process.StandardError.ReadToEndAsync();
-                    using(var input=new StreamWriter(process.StandardInput.BaseStream,new UTF8Encoding(false))) {
-                        // .NET Framework can write a UTF-8 preamble before our first line.
-                        input.WriteLine();
+                    var redirectedInput=process.StandardInput;
+                    bool reservesFirstLine=redirectedInput.Encoding.GetPreamble().Length!=0;
+                    using(var input=new StreamWriter(redirectedInput.BaseStream,new UTF8Encoding(false))) {
+                        // Consume the .NET Framework stream preamble only when its encoding has one.
+                        if(reservesFirstLine) input.WriteLine();
                         input.WriteLine("setboard "+position+" W");
                         input.WriteLine("go");
                         input.WriteLine("quit");
@@ -57,7 +59,10 @@ namespace Othello.Basic {
                         throw new InvalidOperationException(FirstLine(diagnostic));
                     string reply=output.Result.Trim();
                     const string preambleError="[ERROR] command `\uFEFF` not found";
-                    if(FirstLine(reply).TrimEnd()==preambleError) reply=reply.Substring(preambleError.Length).Trim();
+                    const string emptyCommandError="[ERROR] command `` not found";
+                    string first=FirstLine(reply).TrimEnd();
+                    if(reservesFirstLine && (first==preambleError || first==emptyCommandError))
+                        reply=reply.Substring(first.Length).Trim();
                     var move=Coordinate.Match(reply);
                     if(!move.Success) throw new InvalidOperationException(reply.StartsWith("[ERROR]",StringComparison.Ordinal)?
                         FirstLine(reply):"Egaroucid 没有返回有效坐标");

@@ -13,7 +13,8 @@ namespace Othello.Basic {
         readonly Button previous=new Button { Text="上一步", Dock=DockStyle.Fill, Margin=new Padding(3,0,3,6) };
         readonly Button next=new Button { Text="下一步", Dock=DockStyle.Fill, Margin=new Padding(3,0,3,6) };
         readonly List<GameRecord> records;
-        readonly ComboBox mode=new ComboBox { DropDownStyle=ComboBoxStyle.DropDownList, Width=110 };
+        readonly GameMode[] rankModes;
+        readonly ComboBox mode=new ComboBox { DropDownStyle=ComboBoxStyle.DropDownList, Width=156 };
         readonly ListView standings=new ListView { Dock=DockStyle.Fill, View=View.Details, FullRowSelect=true };
         readonly Button export=new Button { Text="导出 CSV", Size=new Size(110,40) };
         readonly ComboBox source=new ComboBox { DropDownStyle=ComboBoxStyle.DropDownList, Width=110 };
@@ -25,6 +26,8 @@ namespace Othello.Basic {
             Font=new Font("Microsoft YaHei UI",10);
             int unreadable;
             records=archive.Load(out unreadable);
+            rankModes=Enum.GetValues(typeof(GameMode)).Cast<GameMode>()
+                .Where(value=>value!=GameMode.Ai||records.Exists(record=>record.Mode==GameMode.Ai)).ToArray();
             if(unreadable>0) Text+="（跳过 "+unreadable+" 个无法读取的记录）";
             var tabs=new TabControl { Dock=DockStyle.Fill };
             var replay=new TabPage("棋局回放"); var ranking=new TabPage("排行榜");
@@ -43,9 +46,9 @@ namespace Othello.Basic {
             toolbar.Controls.Add(games,0,0);toolbar.Controls.Add(previous,1,0);toolbar.Controls.Add(next,2,0);
             layout.Controls.Add(toolbar,0,0); layout.Controls.Add(board,0,1); layout.Controls.Add(step,0,2); layout.Controls.Add(frame,0,3);
             replay.Controls.Add(layout);
-            foreach(GameRecord game in records) games.Items.Add(string.Format("{0:g} · {1} · {2} · {3:0.#} 分{4}",
+            foreach(GameRecord game in records) games.Items.Add(string.Format("{0:g} · {1} · {2} · {3:0.#} 分 · {4}{5}",
                 game.EndedUtc.ToLocalTime(),GameArchive.ModeName(game.Mode)+(game.Stage>0?" 第 "+game.Stage+" 关":""),
-                game.Simulated?"模拟":"实体",game.Score,game.Complete?"":" · 部分记录"));
+                game.Simulated?"模拟":"实体",game.Score,GameArchive.Outcome(game),game.Complete?"":" · 部分记录"));
             games.SelectedIndexChanged+=delegate {
                 if(games.SelectedIndex<0) return;
                 step.Value=0;
@@ -62,7 +65,8 @@ namespace Othello.Basic {
             var filters=new FlowLayoutPanel { Dock=DockStyle.Top, Height=56, Padding=new Padding(5) };
             mode.Margin=source.Margin=new Padding(3,10,5,0);
             OthelloPanel.StyleButton(export);
-            mode.Items.AddRange(new object[]{"普通","闯关","计时"}); source.Items.AddRange(new object[]{"实体棋盘","离线模拟"});
+            mode.Items.AddRange(rankModes.Select(GameArchive.ModeName).ToArray());
+            source.Items.AddRange(new object[]{"实体棋盘","离线模拟"});
             filters.Controls.Add(mode); filters.Controls.Add(source); filters.Controls.Add(export);
             standings.Columns.Add("排名",50); standings.Columns.Add("结束时间",185); standings.Columns.Add("本局得分 (分)",106);
             standings.Columns.Add("总分 (分)",88); standings.Columns.Add("用时 (s)",74); standings.Columns.Add("结果",90);
@@ -94,9 +98,10 @@ namespace Othello.Basic {
             next.Enabled=step.Value<step.Maximum;
             frame.Text=string.Format("{0}/{1} · 黑 {2} 白 {3} · {4}",step.Value+1,game.Frames.Count,board.Board.Black,board.Board.White,
                 game.Complete?"开局至终局":"连接期间记录，可能缺少步骤");
+            if(step.Value==step.Maximum) frame.Text+=" · "+GameArchive.Outcome(game);
         }
         List<GameRecord> CurrentRank() {
-            return GameArchive.Rank(records.Where(record=>record.Simulated==(source.SelectedIndex==1)),(GameMode)mode.SelectedIndex);
+            return GameArchive.Rank(records.Where(record=>record.Simulated==(source.SelectedIndex==1)),rankModes[mode.SelectedIndex]);
         }
         void RenderRank() {
             if(mode.SelectedIndex<0 || source.SelectedIndex<0) return;
@@ -106,7 +111,7 @@ namespace Othello.Basic {
                 GameRecord game=rank[i];
                 standings.Items.Add(new ListViewItem(new[]{(i+1).ToString(),game.EndedUtc.ToLocalTime().ToString("g"),
                     game.Score.ToString("0.#"),game.Total.ToString("0.#"),(game.ElapsedMs/1000.0).ToString("F2"),
-                    game.Result==GameResult.Board?"棋局终了":game.Result==GameResult.Time?"计时结束":game.Result.ToString().ToUpperInvariant()}));
+                    GameArchive.Outcome(game)}));
             }
             standings.EndUpdate(); export.Enabled=rank.Count>0;
             rankSummary.Text=rank.Count==0?"当前筛选下没有有效成绩":"共 "+rank.Count+" 条有效成绩";
