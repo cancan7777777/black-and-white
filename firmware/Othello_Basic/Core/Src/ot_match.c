@@ -17,7 +17,7 @@ static void new_round(OtMatch *m)
     m->edited = 0u;
     m->computer_wait_ms = 0u;
     m->elapsed_ms = 0u;
-    m->remaining_ms = m->mode == OT_TIMED ? (uint32_t)m->limit_seconds * 1000u : 0u;
+    m->remaining_ms[0] = m->remaining_ms[1] = m->mode == OT_TIMED ? (uint32_t)m->limit_seconds * 1000u : 0u;
 }
 
 void ot_match_init(OtMatch *m)
@@ -121,14 +121,17 @@ uint8_t ot_match_tick(OtMatch *m, uint32_t now)
     m->clock_seen = 1u;
     m->clock_ms = now;
     if (m->phase != OT_RUNNING) return 0u;
-    if (m->mode == OT_TIMED && delta >= m->remaining_ms) {
-        m->elapsed_ms += m->remaining_ms;
-        m->remaining_ms = 0u;
-        m->game.revision = next_revision(m->game.revision);
-        finish(m, OT_RESULT_TIME);
-        return 1u;
+    if (m->mode == OT_TIMED) {
+        uint32_t *remaining = &m->remaining_ms[m->game.turn == OT_WHITE ? 1u : 0u];
+        if (delta >= *remaining) {
+            m->elapsed_ms += *remaining;
+            *remaining = 0u;
+            m->game.revision = next_revision(m->game.revision);
+            finish(m, OT_RESULT_TIME);
+            return 1u;
+        }
+        *remaining -= delta;
     }
-    if (m->mode == OT_TIMED) m->remaining_ms -= delta;
     if (m->elapsed_ms <= UINT32_MAX - delta) m->elapsed_ms += delta;
     else m->elapsed_ms = UINT32_MAX;
     if (ot_match_computer_turn(m)) {

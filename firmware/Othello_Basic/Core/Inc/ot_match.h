@@ -21,7 +21,7 @@ typedef struct {
     OtMode mode;
     OtPhase phase, before_edit;
     OtResult result;
-    uint32_t round, total, remaining_ms, elapsed_ms, clock_ms;
+    uint32_t round, total, remaining_ms[2], elapsed_ms, clock_ms;
     uint16_t limit_seconds, computer_wait_ms;
     uint8_t losses, edited, clock_seen, stage, total_half_point;
 } OtMatch;

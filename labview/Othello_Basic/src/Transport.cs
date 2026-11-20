@@ -13,7 +13,7 @@ namespace Othello.Basic {
         void Send(string frame);
     }
     public sealed class SimulatedTransport : ITransport {
-        const string SimulatorLibrary = "OthelloSimulatorV3.dll";
+        const string SimulatorLibrary = "OthelloSimulatorV4.dll";
         [DllImport("kernel32.dll", EntryPoint="LoadLibraryW", CharSet=CharSet.Unicode, SetLastError=true, ExactSpelling=true)]
         static extern IntPtr LoadLibrary(string path);
         static readonly Lazy<IntPtr> SimulatorModule = new Lazy<IntPtr>(LoadSimulator);

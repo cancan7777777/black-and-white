@@ -272,8 +272,24 @@ int main(void)
     ot_match_init(&m);
     check(ot_match_control(&m,OT_SET_MODE,OT_TIMED,1u),"one-second timer");
     ot_match_tick(&m,UINT32_MAX-500u);
-    check(!ot_match_tick(&m,498u) && m.remaining_ms==1u,"timer survives tick wrap and leaves one ms");
+    check(!ot_match_tick(&m,498u) && m.remaining_ms[0]==1u && m.remaining_ms[1]==1000u,"timer survives tick wrap and leaves one ms for black only");
     check(ot_match_tick(&m,499u) && m.total==2u && !ot_match_move(&m,2u,3u),"exact deadline rejects a late move");
+    ot_match_init(&m);
+    check(ot_match_control(&m,OT_SET_MODE,OT_TIMED,1u),"set one second per side");
+    (void)ot_match_tick(&m,0u);
+    check(!ot_match_tick(&m,300u) && m.remaining_ms[0]==700u && m.remaining_ms[1]==1000u,"only black spends time before the first move");
+    check(ot_match_move(&m,2u,3u) && !ot_match_move(&m,0u,0u),"a legal move changes turns and an illegal move does not");
+    check(!ot_match_tick(&m,450u) && m.remaining_ms[0]==700u && m.remaining_ms[1]==850u,"only white spends time after black places a piece");
+    check(ot_match_control(&m,OT_PAUSE,0u,0u) && !ot_match_tick(&m,900u) &&
+          ot_match_control(&m,OT_RESUME,0u,0u),"pause leaves both clocks frozen");
+    check(ot_match_control(&m,OT_TOGGLE_EDIT,0u,0u) && !ot_match_tick(&m,1200u) &&
+          ot_match_control(&m,OT_TOGGLE_EDIT,0u,0u),"editing leaves both clocks frozen");
+    check(m.remaining_ms[0]==700u && m.remaining_ms[1]==850u,"neither clock moves during pause or edit");
+    check(!ot_match_tick(&m,2049u) && m.remaining_ms[1]==1u,"white can still play one ms before its deadline");
+    check(ot_match_tick(&m,2100u) && m.result==OT_RESULT_TIME && m.remaining_ms[0]==700u &&
+          m.remaining_ms[1]==0u && m.elapsed_ms==1300u && m.total==4u,"only white runs out and an overshoot is not counted");
+    check(ot_match_control(&m,OT_START,0u,0u) && m.remaining_ms[0]==1000u && m.remaining_ms[1]==1000u,
+          "new round resets both sides");
     test_stage_scoring();
     exercise_hardware_path();
     prove_natural_win();

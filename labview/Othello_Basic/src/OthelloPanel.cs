@@ -71,6 +71,11 @@ namespace Othello.Basic {
         }
     }
     public sealed class OthelloPanel : UserControl {
+        sealed class ClockLabel : Label {
+            public ClockLabel() {
+                SetStyle(ControlStyles.UserPaint|ControlStyles.AllPaintingInWmPaint|ControlStyles.OptimizedDoubleBuffer,true);
+            }
+        }
         const int EgaroucidModeIndex=3;
         static readonly Color Ink=Color.FromArgb(26,52,46),Muted=Color.FromArgb(72,98,89);
         static readonly Color Canvas=Color.FromArgb(233,241,237),Tint=Color.FromArgb(240,247,243);
@@ -90,6 +95,8 @@ namespace Othello.Basic {
         readonly Label status=new Label(),turn=new Label(),connection=new Label();
         readonly Label blackCount=new Label(),whiteCount=new Label(),logTitle=Label("通信日志");
         readonly Label scoring=new Label();
+        readonly Label clock=new ClockLabel();
+        readonly RowStyle clockRow=new RowStyle(SizeType.Absolute,0);
         readonly Label limitLabel=Label("时长 (s)");
         readonly TextBox log=new TextBox();
         readonly System.Windows.Forms.Timer timer=new System.Windows.Forms.Timer();
@@ -238,7 +245,12 @@ namespace Othello.Basic {
             scoring.Dock=DockStyle.Fill;
             scoring.BackColor=Tint;scoring.Padding=new Padding(7,2,6,2);
             scoring.TextAlign=ContentAlignment.MiddleLeft;
-            sidebar.Controls.Add(scoring,0,2);
+            clock.Dock=DockStyle.Fill;clock.BackColor=Tint;clock.ForeColor=Ink;
+            clock.Padding=new Padding(7,0,6,0);clock.TextAlign=ContentAlignment.MiddleLeft;
+            var scores=Grid(1,0,0);
+            scores.BackColor=Tint;scores.RowStyles[0]=clockRow;
+            scores.Controls.Add(clock,0,0);scores.Controls.Add(scoring,0,1);
+            sidebar.Controls.Add(scores,0,2);
             var settings=Grid(3,19,0);
             settings.ColumnStyles[0].Width=50;
             settings.ColumnStyles[1].Width=21;
@@ -297,14 +309,15 @@ namespace Othello.Basic {
         }
         void UpdateModeInput() {
             bool useLevel=gameMode.SelectedIndex==EgaroucidModeIndex;
+            limitLabel.Text=useLevel?"AI 等级":gameMode.SelectedIndex==2?"每方 (s)":"时长 (s)";
             if(useLevel==selectingAiLevel) return;
             selectingAiLevel=useLevel;
             if(useLevel) {
                 savedSeconds=(int)limit.Value;
-                limit.Minimum=0;limit.Maximum=60;limit.Value=savedLevel;limitLabel.Text="AI 等级";
+                limit.Minimum=0;limit.Maximum=60;limit.Value=savedLevel;
             } else {
                 savedLevel=(int)limit.Value;
-                limit.Maximum=3600;limit.Minimum=1;limit.Value=savedSeconds;limitLabel.Text="时长 (s)";
+                limit.Maximum=3600;limit.Minimum=1;limit.Value=savedSeconds;
             }
         }
         static string ReadEgaroucidPath() {
@@ -467,6 +480,10 @@ namespace Othello.Basic {
             } catch(Exception ex) { connecting=false;session.Report(ex.Message);Render(); }
         }
         void Safe(Action action) { try { action(); } catch(Exception ex) { session.Report(ex.Message); } Render(); }
+        static string ClockText(uint milliseconds) {
+            uint seconds=(milliseconds+999u)/1000u;
+            return (seconds/60).ToString("D2")+":"+(seconds%60).ToString("D2");
+        }
         void Render() {
             if(IsDisposed) return;
             if(InvokeRequired) { if(IsHandleCreated) BeginInvoke(new Action(Render));return; }
@@ -499,7 +516,9 @@ namespace Othello.Basic {
                 !connected?"未连接":source+(synced?" · 棋盘已同步":session.Waiting?" · 正在同步":" · 棋盘待同步");
             connection.ForeColor=synced?Color.FromArgb(151,239,194):connected||connecting?
                 Color.FromArgb(255,222,170):Color.FromArgb(219,233,226);
-            board.Board=session.State;board.Invalidate();
+            BoardState previousBoard=board.Board;
+            board.Board=state;
+            if(previousBoard==null?state!=null:state==null||previousBoard.Cells!=state.Cells) board.Invalidate();
             string message=egaroucidTurn?(SamePosition(failedAiPosition,state)?aiFailure:"Egaroucid 正在思考…"):session.Message;
             status.Text=archiveError==null?message:message+Environment.NewLine+"棋局保存失败："+archiveError;
             status.BackColor=connected&&!synced?Warm:Tint;
@@ -520,9 +539,16 @@ namespace Othello.Basic {
                 modeTitle=GameArchive.ModeName(GameMode.ExternalAi)+" · 玩家执黑";
             else if(match!=null&&match.Mode==GameMode.Challenge)
                 modeTitle=match.ActiveMode==GameMode.Casual?"闯关结算":state.ComputerOpponent?"闯关（人机）":"闯关";
+            bool timed=match!=null&&match.Mode==GameMode.Timed;
+            int clockHeight=timed?24:0;
+            if(clockRow.Height!=clockHeight) clockRow.Height=clockHeight;
+            string timeText=!timed?"":match.BlackRemainingMs.HasValue&&match.WhiteRemainingMs.HasValue?
+                "黑棋 "+ClockText(match.BlackRemainingMs.Value)+"    白棋 "+ClockText(match.WhiteRemainingMs.Value):
+                "旧固件共用计时 "+ClockText(match.RemainingMs);
+            if(clock.Text!=timeText) clock.Text=timeText;
             scoring.Text=match==null?"本局 — 分  总分 — 分":modeTitle+
-                stage+Environment.NewLine+scoreLabel+" "+match.Score.ToString("0.#")+" 分  总分 "+match.TotalScore.ToString("0.#")+" 分"+
-                (match.Mode==GameMode.Timed?"  剩余 "+(match.RemainingMs/1000.0).ToString("F1")+" s":match.Mode==GameMode.Challenge?"  连败 "+match.Losses+" 局":"")+
+                stage+(timed?" · ":Environment.NewLine)+scoreLabel+" "+match.Score.ToString("0.#")+" 分  总分 "+match.TotalScore.ToString("0.#")+" 分"+
+                (match.Mode==GameMode.Challenge?"  连败 "+match.Losses+" 局":"")+
                 (match.Edited?"  已编辑":"");
             string text=session.LogText;if(log.Text!=text) { log.Text=text;log.SelectionStart=log.TextLength;log.ScrollToCaret(); }
         }

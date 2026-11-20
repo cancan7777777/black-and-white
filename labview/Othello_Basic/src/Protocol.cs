@@ -20,6 +20,8 @@ namespace Othello.Basic {
         public decimal TotalScore { get; internal set; }
         public uint Losses { get; internal set; }
         public uint RemainingMs { get; internal set; }
+        public uint? BlackRemainingMs { get; internal set; }
+        public uint? WhiteRemainingMs { get; internal set; }
         public uint ElapsedMs { get; internal set; }
         public uint LimitSeconds { get; internal set; }
         public bool Edited { get; internal set; }
@@ -76,7 +78,8 @@ namespace Othello.Basic {
         }
         public static BoardState ParseState(string[] f) {
             bool keyboardAi=f.Length==21 && f[0]=="@GAME4";
-            bool externalAi=f.Length==21 && f[0]=="@GAME5";
+            bool clocks=f.Length==23 && f[0]=="@GAME6";
+            bool externalAi=clocks || (f.Length==21 && f[0]=="@GAME5");
             bool staged=keyboardAi || externalAi || (f.Length==21 && f[0]=="@GAME3");
             bool advanced=staged || (f.Length==18 && (f[0]=="@GAME" || f[0]=="@GAME2"));
             if(!advanced && (f.Length!=8 || f[0]!="@STATE")) throw new FormatException("棋盘帧字段错误");
@@ -102,11 +105,21 @@ namespace Othello.Basic {
                     if((mode==1 ? stage<1 || stage>4 : stage!=0 || totalHalf!=0) || totalHalf>1 || scoreHalf!=expectedScore)
                         throw new FormatException("关卡得分不合法");
                 }
+                uint? blackRemaining=null,whiteRemaining=null;
+                if(clocks) {
+                    blackRemaining=Number(f[21]); whiteRemaining=Number(f[22]);
+                    uint ceiling=mode==2?limit*1000:0;
+                    if(blackRemaining>ceiling || whiteRemaining>ceiling ||
+                        (mode==2 && (result==2)!=(blackRemaining==0 || whiteRemaining==0)) ||
+                        (mode==2 && status==0 && remaining!=(turn==1?blackRemaining:whiteRemaining)))
+                        throw new FormatException("黑白双方计时状态不合法");
+                }
                 GameMode roundMode=(GameMode)mode;
                 GameMode activeMode=(keyboardAi||externalAi) && (result==4 || result==5) ? GameMode.Casual : roundMode;
                 state.Match=new MatchState { Mode=roundMode, ActiveMode=activeMode, Phase=(GamePhase)phase, Round=round, Total=total,
                     Stage=stage, Score=scoreHalf/2m, TotalScore=total+totalHalf/2m,
-                    Losses=losses, RemainingMs=remaining, ElapsedMs=elapsed, Edited=edited==1, Result=(GameResult)result, LimitSeconds=limit };
+                    Losses=losses, RemainingMs=remaining, BlackRemainingMs=blackRemaining,WhiteRemainingMs=whiteRemaining,
+                    ElapsedMs=elapsed, Edited=edited==1, Result=(GameResult)result, LimitSeconds=limit };
             }
             return state;
         }
