@@ -74,8 +74,10 @@ namespace Othello.Basic {
         const int EgaroucidMode=3;
         static readonly Color Ink=Color.FromArgb(26,52,46),Muted=Color.FromArgb(72,98,89);
         static readonly Color Canvas=Color.FromArgb(233,241,237),Tint=Color.FromArgb(240,247,243);
+        static readonly Color Warm=Color.FromArgb(251,239,225),Cool=Color.FromArgb(227,246,244);
         readonly HostSession session=new HostSession();
         readonly GameArchive archive;
+        readonly Func<SerialSettings,ITransport> serialFactory;
         readonly BoardView board=new BoardView();
         readonly ComboBox mode=new ComboBox(),ports=new ComboBox(),baud=new ComboBox(),bits=new ComboBox(),parity=new ComboBox(),stops=new ComboBox();
         readonly Button connect=new Button(),disconnect=new Button(),refresh=new Button(),move=new Button(),finish=new Button();
@@ -85,7 +87,8 @@ namespace Othello.Basic {
         readonly ComboBox gameMode=new ComboBox(),piece=new ComboBox();
         readonly NumericUpDown limit=new NumericUpDown { Minimum=1,Maximum=3600,Value=180 };
         readonly NumericUpDown row=new NumericUpDown(),col=new NumericUpDown();
-        readonly Label status=new Label(),counts=new Label(),turn=new Label(),connection=new Label();
+        readonly Label status=new Label(),turn=new Label(),connection=new Label();
+        readonly Label blackCount=new Label(),whiteCount=new Label(),logTitle=Label("通信日志");
         readonly Label scoring=new Label();
         readonly Label limitLabel=Label("时长 (s)");
         readonly TextBox log=new TextBox();
@@ -102,8 +105,9 @@ namespace Othello.Basic {
         public bool Stopped { get { return stopped; } }
         public OthelloPanel() : this(new GameArchive(Path.Combine(Environment.GetFolderPath(
             Environment.SpecialFolder.LocalApplicationData),"Othello.Basic","Games"))) { }
-        internal OthelloPanel(GameArchive archive) {
+        internal OthelloPanel(GameArchive archive,Func<SerialSettings,ITransport> serialFactory=null) {
             this.archive=archive;
+            this.serialFactory=serialFactory??(settings=>new SerialTransport(settings));
             Size=new Size(1060,720);MinimumSize=new Size(1000,660);
             BackColor=Canvas;ForeColor=Ink;Font=new Font("Microsoft YaHei UI",10);
             Build();
@@ -167,11 +171,12 @@ namespace Othello.Basic {
             title.BackColor=Color.FromArgb(17,55,47);
             title.Padding=new Padding(17,0,17,0);
             title.Margin=new Padding(0,0,0,8);
-            title.ColumnStyles[0].Width=65;title.ColumnStyles[1].Width=35;
+            title.ColumnStyles[0].Width=58;title.ColumnStyles[1].Width=42;
             title.Controls.Add(new Label { Text="黑白棋 / OTHELLO",Dock=DockStyle.Fill,
                 TextAlign=ContentAlignment.MiddleLeft,Font=new Font(Font.FontFamily,19,FontStyle.Bold),
                 ForeColor=Color.White },0,0);
             connection.Dock=DockStyle.Fill;
+            connection.Font=new Font(Font,FontStyle.Bold);
             connection.TextAlign=ContentAlignment.MiddleRight;
             title.Controls.Add(connection,1,0);
             layout.Controls.Add(title,0,0);
@@ -194,12 +199,13 @@ namespace Othello.Basic {
             var fields=Grid(6,20,0);
             fields.ColumnStyles[0].Width=22;fields.ColumnStyles[1].Width=18;fields.ColumnStyles[2].Width=21;
             fields.ColumnStyles[3].Width=12;fields.ColumnStyles[4].Width=15;fields.ColumnStyles[5].Width=12;
-            Combo(mode,new[]{"离线模拟","真实串口"},0);mode.SelectedIndexChanged+=delegate { Render(); };
+            Combo(mode,new[]{"离线模拟","真实串口"},0);
+            mode.SelectedIndexChanged+=delegate { if(mode.SelectedIndex==1) Safe(RefreshPorts); else Render(); };
             Combo(baud,new[]{"9600","19200","38400","57600","115200","230400"},4);
             Combo(bits,new[]{"5","6","7","8"},3);Combo(parity,new[]{"None","Odd","Even","Mark","Space"},0);
             Combo(stops,new[]{"1","1.5","2"},0);
-            ports.DropDownStyle=ComboBoxStyle.DropDown;ports.Text="COM1";ports.DropDown+=delegate { RefreshPorts(); };
-            AddField(fields,0,"方式",mode);AddField(fields,1,"端口",ports);AddField(fields,2,"波特率 (Bd)",baud);
+            ports.DropDownStyle=ComboBoxStyle.DropDown;ports.DropDown+=delegate { Safe(RefreshPorts); };
+            AddField(fields,0,"连接方式",mode);AddField(fields,1,"COM 端口",ports);AddField(fields,2,"波特率 (Bd)",baud);
             AddField(fields,3,"数据位",bits);AddField(fields,4,"校验",parity);AddField(fields,5,"停止位",stops);
             serial.Controls.Add(fields,0,0);
             var actions=Grid(3,0);
@@ -211,14 +217,20 @@ namespace Othello.Basic {
             return serial;
         }
         Control BuildSidebar() {
-            var sidebar=Grid(1,28,23,47,57,41,49,44,0,44);
+            var sidebar=Grid(1,31,36,49,52,39,49,44,23,0,44);
             sidebar.Padding=new Padding(12,9,12,8);
             sidebar.BackColor=Color.White;
-            turn.Dock=counts.Dock=DockStyle.Fill;
-            turn.TextAlign=counts.TextAlign=ContentAlignment.MiddleLeft;
+            turn.Dock=DockStyle.Fill;
+            turn.TextAlign=ContentAlignment.MiddleLeft;
             turn.Font=new Font(Font.FontFamily,12,FontStyle.Bold);
-            counts.ForeColor=Muted;
-            sidebar.Controls.Add(turn,0,0);sidebar.Controls.Add(counts,0,1);
+            sidebar.Controls.Add(turn,0,0);
+            var pieces=Grid(2,0);
+            blackCount.BackColor=Warm;whiteCount.BackColor=Cool;
+            blackCount.Dock=whiteCount.Dock=DockStyle.Fill;
+            blackCount.TextAlign=whiteCount.TextAlign=ContentAlignment.MiddleCenter;
+            blackCount.Font=whiteCount.Font=new Font(Font,FontStyle.Bold);
+            pieces.Controls.Add(blackCount,0,0);pieces.Controls.Add(whiteCount,1,0);
+            sidebar.Controls.Add(pieces,0,1);
             scoring.Dock=DockStyle.Fill;
             scoring.BackColor=Tint;scoring.Padding=new Padding(7,2,6,2);
             scoring.TextAlign=ContentAlignment.MiddleLeft;
@@ -226,14 +238,14 @@ namespace Othello.Basic {
             var settings=Grid(3,19,0);
             Combo(gameMode,new[]{"普通","闯关","计时","Egaroucid"},0);
             gameMode.SelectedIndexChanged+=delegate { UpdateModeInput(); };
-            AddField(settings,0,"模式",gameMode);
+            AddField(settings,0,"新局模式",gameMode);
             AddField(settings,1,limitLabel,limit);
             Button(applyMode,"设定模式",delegate { Safe(ApplyMode); });
             settings.Controls.Add(applyMode,2,0);
             settings.SetRowSpan(applyMode,2);
             sidebar.Controls.Add(settings,0,3);
             status.Dock=DockStyle.Fill;
-            status.ForeColor=Muted;status.AutoEllipsis=true;
+            status.Padding=new Padding(7,1,5,1);status.AutoEllipsis=true;
             status.TextAlign=ContentAlignment.MiddleLeft;
             sidebar.Controls.Add(status,0,4);
 
@@ -256,8 +268,8 @@ namespace Othello.Basic {
             editTools.Controls.Add(piece,0,0);editTools.Controls.Add(editCell,1,0);sidebar.Controls.Add(editTools,0,6);
             log.Multiline=true;log.ReadOnly=true;log.ScrollBars=ScrollBars.Vertical;log.Dock=DockStyle.Fill;
             log.Font=new Font("Consolas",9);log.BackColor=Tint;log.BorderStyle=BorderStyle.FixedSingle;
-            sidebar.Controls.Add(log,0,7);
-            Button(finish,"结束上位机",delegate { Shutdown(); });sidebar.Controls.Add(finish,0,8);
+            sidebar.Controls.Add(logTitle,0,7);sidebar.Controls.Add(log,0,8);
+            Button(finish,"结束上位机",delegate { Shutdown(); });sidebar.Controls.Add(finish,0,9);
             return sidebar;
         }
         Control BuildGameControls() {
@@ -316,11 +328,12 @@ namespace Othello.Basic {
             return state!=null && state.Match!=null && state.Match.Mode==GameMode.Casual;
         }
         bool EgaroucidTurn(BoardState state) {
-            return egaroucid!=null && Casual(state) && state.Match.Phase==GamePhase.Running &&
+            return egaroucid!=null && session.Synchronized && Casual(state) && state.Match.Phase==GamePhase.Running &&
                 state.Status==0 && state.Turn==2;
         }
         static bool SamePosition(BoardState first,BoardState next) {
-            return next!=null && first.Revision==next.Revision && first.Cells==next.Cells && first.Turn==next.Turn;
+            return Casual(next) && first.Match.Round==next.Match.Round &&
+                first.Revision==next.Revision && first.Cells==next.Cells && first.Turn==next.Turn;
         }
         void CancelSearch() {
             if(search==null) return;
@@ -344,12 +357,13 @@ namespace Othello.Basic {
         void TickEgaroucid() {
             var state=session.State;
             if(requestedEngine!=null && !session.Waiting) {
-                if(Casual(state) && state.Match.Phase==GamePhase.Running && state.Match.Round!=modeBeforeRequest.Match.Round)
+                if(session.Synchronized && Casual(state) && state.Match.Phase==GamePhase.Running && state.Match.Round!=modeBeforeRequest.Match.Round)
                     egaroucid=requestedEngine;
                 requestedEngine=null;modeBeforeRequest=null;
                 Render();
             }
             if(egaroucid==null) return;
+            if(!session.Synchronized) { CancelSearch(); return; }
             if(!Casual(state)) {
                 StopEgaroucid();
                 Render();
@@ -403,7 +417,14 @@ namespace Othello.Basic {
             active=false;connectionAttempt++;connecting=false;timer.Stop();StopEgaroucid();session.Disconnect();Render();
         }
         void Disconnect() { connectionAttempt++;connecting=false;StopEgaroucid();Safe(session.Disconnect); }
-        void RefreshPorts() { string current=ports.Text;ports.Items.Clear();ports.Items.AddRange(SerialPort.GetPortNames());ports.Text=current; }
+        void RefreshPorts() {
+            string current=ports.Text;
+            string[] available=SerialPort.GetPortNames();
+            Array.Sort(available,StringComparer.OrdinalIgnoreCase);
+            ports.Items.Clear();
+            ports.Items.AddRange(available);
+            ports.Text=current.Length==0&&available.Length==1?available[0]:current;
+        }
         void OnConnect(object sender,EventArgs args) {
             if(connecting || !active) return;
             try {
@@ -411,7 +432,7 @@ namespace Othello.Basic {
                 if(mode.SelectedIndex==0) device=new SimulatedTransport();
                 else {
                     SerialSettings settings=new SerialSettings { Port=ports.Text.Trim(),Baud=int.Parse(baud.Text),DataBits=int.Parse(bits.Text),Parity=(Parity)Enum.Parse(typeof(Parity),parity.Text),StopBits=stops.Text=="1"?StopBits.One:stops.Text=="2"?StopBits.Two:StopBits.OnePointFive };
-                    settings.Validate();device=new SerialTransport(settings);
+                    settings.Validate();device=serialFactory(settings);
                 }
                 int attempt=++connectionAttempt;connecting=true;Render();
                 ThreadPool.QueueUserWorkItem(delegate {
@@ -432,7 +453,8 @@ namespace Othello.Basic {
         void Render() {
             if(IsDisposed) return;
             if(InvokeRequired) { if(IsHandleCreated) BeginInvoke(new Action(Render));return; }
-            bool connected=session.Connected;
+            bool connected=session.Connected,synced=session.Synchronized;
+            bool realSerial=mode.SelectedIndex==1;
             BoardState state=session.State;
             MatchState match=state==null?null:state.Match;
             if(!connected) archive.ResetConnection();
@@ -440,14 +462,14 @@ namespace Othello.Basic {
             try { archive.Observe(state,mode.SelectedIndex==0); }
             catch(IOException error) { archiveError=error.Message; }
             catch(UnauthorizedAccessException error) { archiveError=error.Message; }
-            mode.Enabled=!connected&&!connecting&&active;ports.Enabled=!connected&&!connecting&&active&&mode.SelectedIndex==1;
-            baud.Enabled=bits.Enabled=parity.Enabled=stops.Enabled=!connected&&!connecting&&active;
+            mode.Enabled=!connected&&!connecting&&active;
+            ports.Enabled=baud.Enabled=bits.Enabled=parity.Enabled=stops.Enabled=mode.Enabled&&realSerial;
             connect.Enabled=active&&!connected&&!connecting;disconnect.Enabled=active&&(connected||connecting);refresh.Enabled=active&&connected&&!session.Waiting;
             bool egaroucidTurn=EgaroucidTurn(state);
-            move.Enabled=active&&connected&&!session.Waiting&&state!=null&&state.Status==0&&!state.ComputerTurn&&!egaroucidTurn&&
+            move.Enabled=active&&synced&&!session.Waiting&&state.Status==0&&!state.ComputerTurn&&!egaroucidTurn&&
                 (match==null||match.Phase==GamePhase.Running);
             finish.Enabled=active;history.Enabled=active;aiSettings.Enabled=active;
-            bool ready=active&&connected&&!session.Waiting&&match!=null;
+            bool ready=active&&synced&&!session.Waiting&&match!=null;
             startGame.Enabled=ready&&match.Phase==GamePhase.Finished;
             pauseGame.Enabled=ready&&match.Phase==GamePhase.Running;
             resumeGame.Enabled=ready&&match.Phase==GamePhase.Paused;
@@ -455,15 +477,24 @@ namespace Othello.Basic {
             restartGame.Enabled=applyMode.Enabled=gameMode.Enabled=limit.Enabled=ready;
             editCell.Enabled=piece.Enabled=ready&&match.Phase==GamePhase.Editing;
             toggleEdit.Text=match!=null&&match.Phase==GamePhase.Editing?"退出编辑":"开启编辑";
-            connection.Text=connecting?"正在连接…":!active?"请运行 Main.vi":connected?(mode.SelectedIndex==0?"离线模拟 / 已连接":"真实串口 / 已连接"):"未连接";
-            connection.ForeColor=connected?Color.FromArgb(151,239,194):Color.FromArgb(219,233,226);
+            string source=realSerial?ports.Text:"离线模拟";
+            connection.Text=!active?"请运行 Main.vi":connecting?"正在打开 "+source+"…":
+                !connected?"未连接":source+(synced?" · 棋盘已同步":session.Waiting?" · 正在同步":" · 棋盘待同步");
+            connection.ForeColor=synced?Color.FromArgb(151,239,194):connected||connecting?
+                Color.FromArgb(255,222,170):Color.FromArgb(219,233,226);
             board.Board=session.State;board.Invalidate();
             string message=egaroucidTurn?"Egaroucid 正在思考…":session.Message;
             status.Text=archiveError==null?message:message+Environment.NewLine+"棋局保存失败："+archiveError;
-            turn.Text=state==null?"当前回合：—":state.Status==1?"本局已结束":
+            status.BackColor=connected&&!synced?Warm:Tint;
+            status.ForeColor=connected&&!synced?Color.FromArgb(103,54,16):Muted;
+            turn.Text=state==null?"当前回合：—":!synced?"等待棋盘同步":state.Status==1?"本局已结束":
+                match!=null&&match.Phase==GamePhase.Paused?"对局已暂停":
+                match!=null&&match.Phase==GamePhase.Editing?"棋盘编辑":
                 egaroucidTurn?"当前回合：Egaroucid（白方）":
                 state.ComputerTurn?"当前回合：电脑（白方）":"当前回合："+(state.Turn==1?"黑方":"白方");
-            counts.Text=session.State==null?"黑  —    白  —":"黑  "+session.State.Black+"    白  "+session.State.White+"    v"+session.State.Revision;
+            blackCount.Text=state==null?"黑棋  —":"黑棋  "+state.Black+" 枚";
+            whiteCount.Text=state==null?"白棋  —":"白棋  "+state.White+" 枚";
+            logTitle.Text=state==null?"通信日志":"通信日志  ·  棋盘版本 "+state.Revision;
             string stage=match!=null&&match.Stage!=0 ? " · 第 "+match.Stage+"/4 关 ×"+(match.Stage/2m).ToString("0.#") : "";
             string scoreLabel=stage.Length!=0 ? "本关" : "本局";
             scoring.Text=match==null?"本局 — 分  总分 — 分":(egaroucid!=null&&Casual(state)?"Egaroucid · 玩家执黑":
