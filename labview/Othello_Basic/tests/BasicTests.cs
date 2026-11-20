@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO.Ports;
 using System.IO;
+using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 using Othello.Basic;
@@ -226,6 +227,22 @@ class BasicTests {
             model.Control(GameControl.Mode,GameMode.Casual,180);
             serial.Inject(ExternalState(0,model.State));
             WaitForPanel(()=>board.Board.Match.Mode==GameMode.Casual && move.Enabled,"S15 exit restores ordinary play");
+        }
+    }
+
+    static void CheckEngineInputEncodings(string enginePath) {
+        char[] cells=InitialBoard().ToCharArray();
+        cells[19]=cells[27]='1';
+        var board=new BoardState(0,8,2,0,4,1,new string(cells));
+        var original=Console.InputEncoding;
+        try {
+            foreach(var encoding in new Encoding[]{Encoding.GetEncoding(936),new UTF8Encoding(true)}) {
+                Console.InputEncoding=encoding;
+                int cell=new EgaroucidEngine(enginePath,5).FindWhiteMove(board,CancellationToken.None);
+                Check(cell==18||cell==20||cell==34,"real EN returns a legal white move with input code page "+encoding.CodePage);
+            }
+        } finally {
+            Console.InputEncoding=original;
         }
     }
 
@@ -533,7 +550,10 @@ class BasicTests {
             }
             Reject(delegate { new SerialSettings { DataBits=9 }.Validate(); },"invalid data bits");
             Reject(delegate { new SerialSettings { DataBits=8,StopBits=StopBits.OnePointFive }.Validate(); },"invalid 1.5 stop bits combination");
-            if(args.Length!=0) CheckEgaroucid(args[0]);
+            if(args.Length!=0) {
+                CheckEngineInputEncodings(args[0]);
+                CheckEgaroucid(args[0]);
+            }
             CheckPanel();
             CheckSerialPanel();
             CheckShadowCopy();
