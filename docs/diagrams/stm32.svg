@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1160" height="558" viewBox="0 0 1160 558" role="img" aria-labelledby="title">
+<title id="title">STM32 下位机原理框图</title>
+<defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0 0 L9 4.5 L0 9 Z" fill="#000"/></marker></defs>
+<rect width="1160" height="558" fill="#fff"/>
+<g font-family="Microsoft YaHei, Noto Sans CJK SC, SimHei, sans-serif" fill="#000">
+<text x="580" y="34.0" text-anchor="middle" dominant-baseline="central" font-size="30" font-weight="700">STM32 下位机原理框图</text>
+<polyline points="577,155 577,238" fill="none" stroke="#000" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<polyline points="298,230 348,230 348,276 396,276" fill="none" stroke="#000" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<polyline points="298,389 348,389 348,329 396,329" fill="none" stroke="#000" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+<polyline points="758,300 840,300" fill="none" stroke="#000" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<polyline points="968,344.5 968,426.5" fill="none" stroke="#000" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<rect x="401.0" y="83.0" width="352" height="72" rx="2" fill="#fff" stroke="#000" stroke-width="2.5"/><text x="577" y="103.0" text-anchor="middle" dominant-baseline="central" font-size="25" font-weight="700">最小系统</text><text x="577" y="135.0" text-anchor="middle" dominant-baseline="central" font-size="20" font-weight="400">3.3 V、8 MHz HSE、复位与启动</text>
+<rect x="396.0" y="238.0" width="362" height="124" rx="2" fill="#fff" stroke="#000" stroke-width="2.5"/><text x="577" y="271.0" text-anchor="middle" dominant-baseline="central" font-size="25" font-weight="700">STM32F103C8T6</text><text x="577" y="300.0" text-anchor="middle" dominant-baseline="central" font-size="20" font-weight="400">AppBasic 调度与 OtMatch 棋局</text><text x="577" y="329.0" text-anchor="middle" dominant-baseline="central" font-size="20" font-weight="400">翻子、双钟、闯关和终局</text>
+<rect x="34.0" y="183.5" width="264" height="93" rx="2" fill="#fff" stroke="#000" stroke-width="2.5"/><text x="166" y="201.0" text-anchor="middle" dominant-baseline="central" font-size="25" font-weight="700">4×4 矩阵键盘</text><text x="166" y="230.0" text-anchor="middle" dominant-baseline="central" font-size="17" font-weight="400">行 PB0/PB1/PB10/PB11</text><text x="166" y="259.0" text-anchor="middle" dominant-baseline="central" font-size="17" font-weight="400">列 PB12–PB15</text>
+<rect x="34.0" y="344.5" width="264" height="89" rx="2" fill="#fff" stroke="#000" stroke-width="2.5"/><text x="166" y="373.0" text-anchor="middle" dominant-baseline="central" font-size="25" font-weight="700">USART1 通信</text><text x="166" y="405.0" text-anchor="middle" dominant-baseline="central" font-size="20" font-weight="400">PA9 TX / PA10 RX</text>
+<rect x="840.0" y="255.5" width="256" height="89" rx="2" fill="#fff" stroke="#000" stroke-width="2.5"/><text x="968" y="284.0" text-anchor="middle" dominant-baseline="central" font-size="25" font-weight="700">点阵发送</text><text x="968" y="316.0" text-anchor="middle" dominant-baseline="central" font-size="20" font-weight="400">TIM1_CH1 + DMA1_CH2</text>
+<rect x="840.0" y="426.5" width="256" height="77" rx="2" fill="#fff" stroke="#000" stroke-width="2.5"/><text x="968" y="449.0" text-anchor="middle" dominant-baseline="central" font-size="25" font-weight="700">WS2812 8×8 点阵</text><text x="968" y="481.0" text-anchor="middle" dominant-baseline="central" font-size="20" font-weight="400">PA8 → DIN</text>
+<text x="575" y="463.0" text-anchor="middle" dominant-baseline="central" font-size="18" font-weight="400" paint-order="stroke" stroke="#fff" stroke-width="8" stroke-linejoin="round">串口通过 GAME6 同步棋盘与黑白时钟</text>
+</g></svg>

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1160" height="603" viewBox="0 0 1160 603" role="img" aria-labelledby="title">
+<title id="title">LabVIEW 上位机原理框图</title>
+<defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0 0 L9 4.5 L0 9 Z" fill="#000"/></marker></defs>
+<rect width="1160" height="603" fill="#fff"/>
+<g font-family="Microsoft YaHei, Noto Sans CJK SC, SimHei, sans-serif" fill="#000">
+<text x="580" y="34.0" text-anchor="middle" dominant-baseline="central" font-size="30" font-weight="700">LabVIEW 上位机原理框图</text>
+<polyline points="745,113 857,113" fill="none" stroke="#000" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)" marker-start="url(#arrow)" stroke-dasharray="8 6"/>
+<polyline points="595,155 595,220" fill="none" stroke="#000" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+<polyline points="745,265 857,265" fill="none" stroke="#000" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<polyline points="595,310 595,383" fill="none" stroke="#000" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+<polyline points="513,310 513,345 216,345 216,383" fill="none" stroke="#000" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+<polyline points="216,471 216,523.5" fill="none" stroke="#000" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+<rect x="445.0" y="71.0" width="300" height="84" rx="2" fill="#fff" stroke="#000" stroke-width="2.5"/><text x="595" y="97.0" text-anchor="middle" dominant-baseline="central" font-size="25" font-weight="700">Main.vi 与 .NET 面板</text><text x="595" y="129.0" text-anchor="middle" dominant-baseline="central" font-size="20" font-weight="400">棋盘、模式操作、黑白双钟</text>
+<rect x="857.0" y="71.0" width="260" height="84" rx="2" fill="#fff" stroke="#000" stroke-width="2.5"/><text x="987" y="97.0" text-anchor="middle" dominant-baseline="central" font-size="25" font-weight="700">Egaroucid</text><text x="987" y="129.0" text-anchor="middle" dominant-baseline="central" font-size="20" font-weight="400">AI 模式下计算白棋应手</text>
+<rect x="445.0" y="220.0" width="300" height="90" rx="2" fill="#fff" stroke="#000" stroke-width="2.5"/><text x="595" y="249.0" text-anchor="middle" dominant-baseline="central" font-size="25" font-weight="700">HostSession</text><text x="595" y="281.0" text-anchor="middle" dominant-baseline="central" font-size="18" font-weight="400">串口帧、CRC、序号和棋盘修订号</text>
+<rect x="857.0" y="220.0" width="260" height="90" rx="2" fill="#fff" stroke="#000" stroke-width="2.5"/><text x="987" y="249.0" text-anchor="middle" dominant-baseline="central" font-size="25" font-weight="700">GameArchive</text><text x="987" y="281.0" text-anchor="middle" dominant-baseline="central" font-size="20" font-weight="400">XML、回放、排行榜、CSV</text>
+<rect x="76.0" y="383.0" width="280" height="88" rx="2" fill="#fff" stroke="#000" stroke-width="2.5"/><text x="216" y="411.0" text-anchor="middle" dominant-baseline="central" font-size="25" font-weight="700">SerialTransport</text><text x="216" y="443.0" text-anchor="middle" dominant-baseline="central" font-size="20" font-weight="400">真实串口 115200 / 8N1</text>
+<rect x="445.0" y="383.0" width="300" height="88" rx="2" fill="#fff" stroke="#000" stroke-width="2.5"/><text x="595" y="411.0" text-anchor="middle" dominant-baseline="central" font-size="25" font-weight="700">SimulatedTransport</text><text x="595" y="443.0" text-anchor="middle" dominant-baseline="central" font-size="18" font-weight="400">V4 原生库运行同一 C 状态机</text>
+<rect x="76.0" y="523.5" width="280" height="57" rx="2" fill="#fff" stroke="#000" stroke-width="2.5"/><text x="216" y="552.0" text-anchor="middle" dominant-baseline="central" font-size="25" font-weight="700">STM32 下位机</text>
+<text x="702" y="187.0" text-anchor="middle" dominant-baseline="central" font-size="18" font-weight="400" paint-order="stroke" stroke="#fff" stroke-width="8" stroke-linejoin="round">请求／确认状态</text>
+<text x="379" y="330.0" text-anchor="middle" dominant-baseline="central" font-size="18" font-weight="400" paint-order="stroke" stroke="#fff" stroke-width="8" stroke-linejoin="round">实体连接</text>
+<text x="685" y="347.0" text-anchor="middle" dominant-baseline="central" font-size="18" font-weight="400" paint-order="stroke" stroke="#fff" stroke-width="8" stroke-linejoin="round">离线模拟</text>
+</g></svg>
