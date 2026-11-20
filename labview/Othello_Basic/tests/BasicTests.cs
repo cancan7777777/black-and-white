@@ -324,6 +324,8 @@ class BasicTests {
                 WaitForUi(600);
                 Check(board.Board.Black+board.Board.White==4+fullGameMoves && !move.Enabled,
                     "terminal board has one new piece per confirmed move and stays locked");
+                string outcome=GameArchive.Outcome(board.Board.Black,board.Board.White,true);
+                Check(FindControl<Label>(panel,l=>l.Text==outcome)!=null,"live terminal panel displays the board outcome");
                 Console.WriteLine("Egaroucid offline match: "+fullGameMoves+" moves, black "+board.Board.Black+", white "+board.Board.White);
 
                 start.PerformClick();
@@ -401,6 +403,25 @@ class BasicTests {
         }
     }
 
+    static void CheckOutcomes() {
+        var frame=new ReplayFrame { Status=1, Cells=new string('1',30)+new string('2',16)+new string('0',18) };
+        var record=new GameRecord { Result=GameResult.Over };
+        record.Frames.Add(frame);
+        Check(GameArchive.Outcome(record)=="黑棋胜","terminal cells determine black victory even for a partial replay and challenge OVER");
+        frame.Cells=new string('2',30)+new string('1',16)+new string('0',18);
+        record.Result=GameResult.Win;
+        Check(GameArchive.Outcome(record)=="白棋胜","terminal cells determine white victory independently of challenge WIN");
+        frame.Cells=InitialBoard();
+        record.Result=GameResult.Time;
+        Check(GameArchive.Outcome(record)=="平局","equal counts at timed settlement produce a draw");
+        frame.Cells=new string('1',30)+new string('2',16)+new string('0',18);
+        record.Result=GameResult.Exit;
+        Check(GameArchive.Outcome(record)=="未完成","exiting with more pieces does not award a win");
+        record.Result=GameResult.Board;
+        frame.Status=0;
+        Check(GameArchive.Outcome(record)=="未完成","a replay without a terminal frame has no outcome");
+    }
+
     static void CheckArchive() {
         string folder=Path.Combine(Path.GetDirectoryName(typeof(BasicTests).Assembly.Location),"archive-test-"+Guid.NewGuid().ToString("N"));
         var archive=new GameArchive(folder);
@@ -461,9 +482,15 @@ class BasicTests {
                 Check(board.Board.Status==1 && previous.Enabled && !next.Enabled,"replay ends at the confirmed terminal frame");
                 game.SelectedIndex=game.Items.Count-1;
                 Check(step.Value==0 && board.Board.Cells==InitialBoard(),"changing record resets the replay cursor");
+                Check(Convert.ToString(game.SelectedItem).Contains("未完成"),"the replay list labels an exited round as unfinished");
+                step.Value=step.Maximum;
+                Check(FindControl<Label>(replay,l=>l.Text.EndsWith(" · 未完成"))!=null,
+                    "the last frame of an exited round shows unfinished");
                 Check(rank.Items.Count==0,"real and simulated results are filtered independently");
                 source.SelectedItem="离线模拟";
                 Check(rank.Items.Count==5 && rank.Items[0].SubItems.Count==6,"ranking window shows simulated scores and timing columns");
+                Check(rank.Items[0].SubItems[5].Text==GameArchive.Outcome(GameArchive.Rank(reopened,GameMode.Casual)[0]),
+                    "the ranking result column shows the final board outcome");
             }
             foreach(GameMode mode in modes) {
                 var edited=new GameRecord { Mode=mode, Result=GameResult.Board, Score=64, Edited=true };
@@ -504,6 +531,7 @@ class BasicTests {
             string fractionalCsv=Path.Combine(folder,"fractional.csv");
             GameArchive.Export(fractionalCsv,new[]{fractional});
             Check(File.ReadAllLines(fractionalCsv)[1].Contains(",46.5,188.5,"),"CSV preserves both half-point values");
+            Check(File.ReadAllLines(fractionalCsv)[1].EndsWith(",黑棋胜"),"CSV exports the final board outcome");
         } finally {
             if(Directory.Exists(folder)) {
                 foreach(string file in Directory.GetFiles(folder)) File.Delete(file);
@@ -558,6 +586,7 @@ class BasicTests {
             CheckSerialPanel();
             CheckShadowCopy();
             CheckAdvanced();
+            CheckOutcomes();
             CheckArchive();
             Console.WriteLine("PASS "+checks+" checks: framing, modes, editor, timers, replay, ranking, reconnect, panel actions");
             return 0;

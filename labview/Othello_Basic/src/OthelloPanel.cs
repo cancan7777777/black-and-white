@@ -504,7 +504,8 @@ namespace Othello.Basic {
             status.Text=archiveError==null?message:message+Environment.NewLine+"棋局保存失败："+archiveError;
             status.BackColor=connected&&!synced?Warm:Tint;
             status.ForeColor=connected&&!synced?Color.FromArgb(103,54,16):Muted;
-            turn.Text=state==null?"当前回合：—":!synced?"等待棋盘同步":state.Status==1?"本局已结束":
+            turn.Text=state==null?"当前回合：—":!synced?"等待棋盘同步":
+                state.Status==1?GameArchive.Outcome(state.Black,state.White,match==null||match.Result!=GameResult.Exit):
                 match!=null&&match.Phase==GamePhase.Paused?"对局已暂停":
                 match!=null&&match.Phase==GamePhase.Editing?"棋盘编辑":
                 egaroucidTurn?"当前回合：Egaroucid（白方）":
