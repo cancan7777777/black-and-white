@@ -11,3 +11,8 @@
 - 只读核对本机 Proteus 8.17 SP2，用 `rg --text` 检索安装库的键盘型号，并解析 `ACTIVE.LIB` 的按键交点配置。`KEYPAD-SMALLCALC` 符合 4×4 和 8 脚，键帽使用计算器字符。`KEYPAD-PHONE` 是 4×3，`KEYPAD-CALCULATOR` 是更大的计算器布局，`KEYPAD-TRELLIS-C1` 的按键交点使用 A～P 端和 1、2 端，无法作为 4 行加 4 列的对应器件。
 - 核对第三方发布者的[膜键盘库说明](https://www.theengineeringprojects.com/2026/10/membrane-keypad-library-for-proteus-v1-0.html)。其 4×4 型号有 8 个行列端子，演示使用数字、A～D、`*` 和 `#`，资料未列出键帽为 1～16 的型号或设置。
 - 本机标准库和已查的第三方资料均未确认有符合三个条件的现成器件。本次只提交核查日志。
+
+## 实体键盘的 8 根信号线
+
+- 用户询问现有 4×4 矩阵键盘的 8 根线是否应接连续的 PB 引脚。只读对照 `Othello_Basic.ioc`、`Core/Inc/main.h`、`Core/Src/app_platform.c` 和根目录仿真接线表，确认四行依次接 `PB0`、`PB1`、`PB10`、`PB11`，四列依次接 `PB12`、`PB13`、`PB14`、`PB15`。
+- STM32 逐行驱动并读取带上拉的列，8 根信号线对应 4 路输出和 4 路输入。实体模块排针顺序需以其行列丝印或断电通断测量为准。本次只核对工程定义，未做实物测量。
