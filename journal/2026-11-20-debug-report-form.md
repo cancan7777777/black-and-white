@@ -12,3 +12,7 @@
 ## 2026-11-21 确认声明编辑范围
 
 1. 用户明确要求以后原样保留 AI 使用声明整节，由本人填写。已写入 `AGENTS.md`，相关 Word 本次未读取或编辑。该规则与本次留痕纳入 #15。
+
+## 2026-11-21 核对框图原文件位置
+
+1. 用户询问黑白框图 Markdown 所用原图的位置。用 `rg` 核对标题与相对链接，按文件清单确认 `docs/diagrams/` 下的 `system.svg`、`program-flow.svg`、`stm32.svg` 和 `labview.svg` 均存在。本地绘图脚本位于 `build/docx/debug-report/draw.py`。本次只读取图件与索引，关联 #15。
