@@ -34,6 +34,11 @@ namespace Othello.Basic {
         public GameRecord() { Frames=new List<ReplayFrame>(); }
     }
 
+    internal struct AiMatchStats {
+        internal int BlackWins, WhiteWins, Draws;
+        internal int Total { get { return BlackWins+WhiteWins+Draws; } }
+    }
+
     public sealed class GameArchive {
         readonly string folder;
         readonly XmlSerializer serializer=new XmlSerializer(typeof(GameRecord));
@@ -43,22 +48,26 @@ namespace Othello.Basic {
         public void ResetConnection() { current=null; currentRound=lastRevision=settledRound=0; }
 
         public void Observe(BoardState state, bool simulated) {
-            if(state==null || state.Match==null) return;
+            Observe(state,simulated,false);
+        }
+        internal bool Observe(BoardState state,bool simulated,bool legacyAi) {
+            if(state==null || state.Match==null) return false;
             MatchState match=state.Match;
             if(current==null || currentRound!=match.Round || state.Revision<lastRevision) {
-                if(match.Phase==GamePhase.Finished) return;
+                if(match.Phase==GamePhase.Finished) return false;
                 currentRound=match.Round;
                 lastRevision=settledRound=0;
                 current=new GameRecord { Id=Guid.NewGuid().ToString("N"), Mode=match.Mode, Simulated=simulated,
                     Complete=state.Black==2 && state.White==2 && state.Turn==1 && !match.Edited };
             }
+            if(legacyAi) current.Mode=GameMode.ExternalAi;
             if(lastRevision!=state.Revision) {
                 if(lastRevision!=0 && state.Revision!=lastRevision+1) current.Complete=false;
                 current.Frames.Add(new ReplayFrame { Cells=state.Cells, Revision=state.Revision,
                     Turn=state.Turn, Status=state.Status, Black=state.Black, White=state.White });
                 lastRevision=state.Revision;
             }
-            if(match.Phase!=GamePhase.Finished || settledRound==match.Round) return;
+            if(match.Phase!=GamePhase.Finished || settledRound==match.Round) return false;
             if(current.EndedUtc==default(DateTime)) current.EndedUtc=DateTime.UtcNow;
             current.Result=match.Result; current.Score=match.Score; current.Total=match.TotalScore; current.Stage=match.Stage;
             current.ElapsedMs=match.ElapsedMs; current.Edited=match.Edited;
@@ -72,6 +81,7 @@ namespace Othello.Basic {
                 } finally { if(File.Exists(temporary)) File.Delete(temporary); }
             }
             settledRound=match.Round;
+            return true;
         }
 
         public List<GameRecord> Load(out int unreadable) {
@@ -105,15 +115,35 @@ namespace Othello.Basic {
         static bool IsSettled(GameResult result) {
             return result==GameResult.Board || result==GameResult.Time || result==GameResult.Win || result==GameResult.Over;
         }
+        internal AiMatchStats GetAiMatchStats() {
+            int unreadable;
+            return CountAiMatches(Load(out unreadable));
+        }
+        internal static AiMatchStats CountAiMatches(IEnumerable<GameRecord> records) {
+            var stats=new AiMatchStats();
+            foreach(var record in records) {
+                if(record.Mode!=GameMode.ExternalAi || record.Edited || record.Result!=GameResult.Board) continue;
+                int? difference=FinalDiscDifference(record);
+                if(!difference.HasValue) continue;
+                if(difference>0) stats.BlackWins++;
+                else if(difference<0) stats.WhiteWins++;
+                else stats.Draws++;
+            }
+            return stats;
+        }
         internal static string Outcome(int black,int white,bool settled) {
             if(!settled) return "未完成";
             if(black==white) return "平局";
             return black>white?"黑棋胜":"白棋胜";
         }
         internal static string Outcome(GameRecord record) {
+            int? difference=FinalDiscDifference(record);
+            return Outcome(difference.GetValueOrDefault(),0,difference.HasValue);
+        }
+        static int? FinalDiscDifference(GameRecord record) {
             var final=record.Frames==null?null:record.Frames.LastOrDefault();
-            if(!IsSettled(record.Result) || final==null || final.Status!=1 || final.Cells==null) return "未完成";
-            return Outcome(final.Cells.Count(cell=>cell=='1'),final.Cells.Count(cell=>cell=='2'),true);
+            if(!IsSettled(record.Result) || final==null || final.Status!=1 || final.Cells==null) return null;
+            return final.Cells.Count(cell=>cell=='1')-final.Cells.Count(cell=>cell=='2');
         }
 
         public static string ModeName(GameMode mode) {
