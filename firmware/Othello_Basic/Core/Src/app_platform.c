@@ -164,7 +164,7 @@ uint8_t AppPlatform_TakeKey(void)
 
 void AppPlatform_Render(const AppBasicSnapshot *snapshot, uint8_t cursor, void *context)
 {
-    uint8_t winner = app_led_winner(&snapshot->game, snapshot->result);
+    uint8_t winner = snapshot->winner;
     (void)context;
     memcpy(desired_board, snapshot->game.board, sizeof(desired_board));
     desired_row = snapshot->cursor_row;

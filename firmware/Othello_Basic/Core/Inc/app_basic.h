@@ -9,7 +9,7 @@
 typedef struct {
     uint32_t api_version;
     OtGame game; /* Value copy: never a writable pointer to the authoritative game. */
-    uint8_t cursor_row, cursor_col, standby;
+    uint8_t cursor_row, cursor_col, standby, winner;
     OtResult result;
 } AppBasicSnapshot;
 

@@ -34,6 +34,7 @@ OtMode ot_match_active_mode(const OtMatch *match);
 uint8_t ot_match_tick(OtMatch *match, uint32_t now);
 uint8_t ot_match_computer_turn(const OtMatch *match);
 uint8_t ot_match_external_turn(const OtMatch *match);
+uint8_t ot_match_winner(const OtMatch *match);
 /* One unit represents half a point. */
 unsigned ot_match_score_half(const OtMatch *match);
 uint8_t ot_match_move(OtMatch *match, uint8_t row, uint8_t col);

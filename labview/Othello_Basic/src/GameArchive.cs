@@ -27,6 +27,8 @@ namespace Othello.Basic {
         public decimal Total { get; set; }
         public uint Stage { get; set; }
         public uint ElapsedMs { get; set; }
+        public uint? BlackRemainingMs { get; set; }
+        public uint? WhiteRemainingMs { get; set; }
         public bool Edited { get; set; }
         public bool Simulated { get; set; }
         public bool Complete { get; set; }
@@ -71,6 +73,7 @@ namespace Othello.Basic {
             if(current.EndedUtc==default(DateTime)) current.EndedUtc=DateTime.UtcNow;
             current.Result=match.Result; current.Score=match.Score; current.Total=match.TotalScore; current.Stage=match.Stage;
             current.ElapsedMs=match.ElapsedMs; current.Edited=match.Edited;
+            current.BlackRemainingMs=match.BlackRemainingMs; current.WhiteRemainingMs=match.WhiteRemainingMs;
             Directory.CreateDirectory(folder);
             string path=Path.Combine(folder,current.Id+".xml");
             if(!File.Exists(path)) {
@@ -136,9 +139,27 @@ namespace Othello.Basic {
             if(black==white) return "平局";
             return black>white?"黑棋胜":"白棋胜";
         }
+        // 1 = 黑方超时, 2 = 白方超时, 0 = 无法从计时状态判定。超时的一方判负，与子数无关。
+        internal static int TimeoutLoser(uint? blackRemaining,uint? whiteRemaining) {
+            bool blackExpired=blackRemaining==0,whiteExpired=whiteRemaining==0;
+            if(blackExpired==whiteExpired) return 0;
+            return blackExpired?1:2;
+        }
+        internal static string TimedOutcome(int loser) {
+            return loser==1?"白棋胜":loser==2?"黑棋胜":"平局";
+        }
+        internal static string Outcome(int black,int white,bool settled,GameResult result,uint? blackRemaining,uint? whiteRemaining) {
+            if(!settled) return "未完成";
+            if(result==GameResult.Time) {
+                int loser=TimeoutLoser(blackRemaining,whiteRemaining);
+                if(loser!=0) return TimedOutcome(loser);
+            }
+            return Outcome(black,white,true);
+        }
         internal static string Outcome(GameRecord record) {
             int? difference=FinalDiscDifference(record);
-            return Outcome(difference.GetValueOrDefault(),0,difference.HasValue);
+            if(!difference.HasValue) return "未完成";
+            return Outcome(difference.GetValueOrDefault(),0,true,record.Result,record.BlackRemainingMs,record.WhiteRemainingMs);
         }
         static int? FinalDiscDifference(GameRecord record) {
             var final=record.Frames==null?null:record.Frames.LastOrDefault();

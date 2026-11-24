@@ -198,7 +198,10 @@ namespace Othello.Basic {
                 switch(state.Match.Result) {
                     case GameResult.Win: return "WIN · 已达 188 分"+challengeExit;
                     case GameResult.Over: return (state.Match.Losses==2 ? "OVER · 两连败" : "OVER · 四关未达 188 分")+challengeExit;
-                    case GameResult.Time: return "计时结束，已结算";
+                    case GameResult.Time: {
+                        int loser=GameArchive.TimeoutLoser(state.Match.BlackRemainingMs,state.Match.WhiteRemainingMs);
+                        return loser==1?"计时结束 · 黑方超时判负":loser==2?"计时结束 · 白方超时判负":"计时结束，已结算";
+                    }
                     case GameResult.Exit: return "已结束退出，本局不计分";
                 }
                 if(state.Match.Phase==GamePhase.Paused) return "已暂停";

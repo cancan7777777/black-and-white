@@ -1,19 +1,12 @@
 #ifndef APP_LED_HEART_H
 #define APP_LED_HEART_H
-#include "ot_match.h"
+#include <stdint.h>
 
 #define APP_LED_HEART_PIXELS 40u
 #define APP_LED_HEART_STEP_MS 45u
 #define APP_LED_HEART_HOLD_MS 700u
 #define APP_LED_HEART_DURATION_MS \
     ((APP_LED_HEART_PIXELS - 1u) * APP_LED_HEART_STEP_MS + APP_LED_HEART_HOLD_MS)
-
-static inline uint8_t app_led_winner(const OtGame *game, OtResult result)
-{
-    if (game->status != OT_OVER || result == OT_RESULT_EXIT || game->black == game->white)
-        return OT_EMPTY;
-    return game->black > game->white ? OT_BLACK : OT_WHITE;
-}
 
 static inline unsigned app_led_heart_visible(uint32_t elapsed)
 {

@@ -551,7 +551,10 @@ namespace Othello.Basic {
             if(!session.Synchronized) outlook="局势 · 等待棋盘同步";
             else if(state.Status==1) {
                 int difference=state.Black-state.White;
-                outlook=state.Match.Result==GameResult.Exit?"终局 · 未完成":difference==0?"终局 · 平局":
+                int loser=state.Match.Result==GameResult.Time?
+                    GameArchive.TimeoutLoser(state.Match.BlackRemainingMs,state.Match.WhiteRemainingMs):0;
+                outlook=state.Match.Result==GameResult.Exit?"终局 · 未完成":loser!=0?"终局 · "+(loser==1?"黑方超时判负":"白方超时判负"):
+                    difference==0?"终局 · 平局":
                     "终局 · "+(difference>0?"黑棋多 ":"白棋多 ")+Math.Abs(difference)+" 子";
             } else if(SamePosition(analyzedPosition,state)&&blackDiscDifference.HasValue) {
                 int difference=blackDiscDifference.Value;
@@ -607,7 +610,8 @@ namespace Othello.Basic {
             status.ForeColor=connected&&!synced?Color.FromArgb(103,54,16):Muted;
             turn.Text=state==null?"当前回合：—":!synced?"等待棋盘同步":
                 state.Standby?"待机 · 按实体 S4 开局":
-                state.Status==1?GameArchive.Outcome(state.Black,state.White,match==null||match.Result!=GameResult.Exit):
+                state.Status==1?GameArchive.Outcome(state.Black,state.White,match==null||match.Result!=GameResult.Exit,
+                    match==null?GameResult.None:match.Result,match==null?null:match.BlackRemainingMs,match==null?null:match.WhiteRemainingMs):
                 match!=null&&match.Phase==GamePhase.Paused?"对局已暂停":
                 match!=null&&match.Phase==GamePhase.Editing?"棋盘编辑":
                 egaroucidTurn?"当前回合：Egaroucid（白方）":

@@ -313,20 +313,52 @@ static void test_stage_scoring(void)
 
 static void test_winning_heart(void)
 {
-    OtGame game = {0};
+    OtMatch m;
     unsigned lit, row, col;
-    game.black = 34u;
-    game.white = 30u;
-    check(app_led_winner(&game, OT_RESULT_NONE) == OT_EMPTY, "running game has no winner");
-    game.status = OT_OVER;
-    check(app_led_winner(&game, OT_RESULT_BOARD) == OT_BLACK, "board result uses black's color");
-    check(app_led_winner(&game, OT_RESULT_WIN) == OT_BLACK, "WIN still has a heart before the marquee");
-    check(app_led_winner(&game, OT_RESULT_EXIT) == OT_EMPTY, "early exit skips the heart");
-    game.black = 30u;
-    check(app_led_winner(&game, OT_RESULT_BOARD) == OT_EMPTY, "draw skips the heart");
-    game.white = 34u;
-    check(app_led_winner(&game, OT_RESULT_TIME) == OT_WHITE, "timed result uses white's color");
-    check(app_led_winner(&game, OT_RESULT_OVER) == OT_WHITE, "OVER still has a heart before the marquee");
+    ot_match_init(&m);
+    m.game.black = 34u;
+    m.game.white = 30u;
+    check(ot_match_winner(&m) == OT_EMPTY, "running game has no winner");
+    m.phase = OT_FINISHED;
+    m.game.status = OT_OVER;
+    m.result = OT_RESULT_BOARD;
+    check(ot_match_winner(&m) == OT_BLACK, "board result uses black's color");
+    m.result = OT_RESULT_WIN;
+    check(ot_match_winner(&m) == OT_BLACK, "WIN still has a heart before the marquee");
+    m.result = OT_RESULT_EXIT;
+    check(ot_match_winner(&m) == OT_EMPTY, "early exit skips the heart");
+    m.result = OT_RESULT_BOARD;
+    m.game.black = 30u;
+    check(ot_match_winner(&m) == OT_EMPTY, "draw skips the heart");
+    m.game.white = 34u;
+    check(ot_match_winner(&m) == OT_WHITE, "board result uses white's color when white leads");
+    m.result = OT_RESULT_OVER;
+    check(ot_match_winner(&m) == OT_WHITE, "OVER still has a heart before the marquee");
+
+    /* Pretend black leads on discs, then let black's own clock run out. */
+    ot_match_init(&m);
+    check(ot_match_control(&m, OT_SET_MODE, OT_TIMED, 1u), "timed mode for the timeout winner");
+    m.game.black = 40u;
+    m.game.white = 20u;
+    m.game.turn = OT_BLACK;
+    (void)ot_match_tick(&m, 0u);
+    check(!ot_match_tick(&m, 999u) && m.remaining_ms[0] == 1u, "black keeps its clock until the deadline");
+    check(ot_match_tick(&m, 1000u) && m.result == OT_RESULT_TIME &&
+          m.remaining_ms[0] == 0u && m.remaining_ms[1] == 1000u,
+          "black times out while it still holds the larger share of the board");
+    check(ot_match_winner(&m) == OT_WHITE, "the side that runs out of time loses regardless of disc count");
+    m.remaining_ms[1] = 0u;
+    check(ot_match_winner(&m) == OT_EMPTY, "an impossible double expiry names no winner");
+
+    check(ot_match_control(&m, OT_START, 0u, 0u) && m.remaining_ms[0] == 1000u &&
+          m.remaining_ms[1] == 1000u, "a new round restores both clocks");
+    m.game.black = 20u;
+    m.game.white = 40u;
+    m.game.turn = OT_WHITE;
+    (void)ot_match_tick(&m, m.clock_ms);
+    check(ot_match_tick(&m, m.clock_ms + 1000u) && m.result == OT_RESULT_TIME &&
+          ot_match_winner(&m) == OT_BLACK,
+          "white timing out loses even when white has more pieces");
 
     for (lit = 0u; lit <= APP_LED_HEART_PIXELS; ++lit) {
         unsigned count = 0u;

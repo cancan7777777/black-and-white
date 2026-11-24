@@ -72,6 +72,20 @@ static void finish(OtMatch *m, OtResult reason)
     else if (m->losses == 2u || m->stage == OT_CHALLENGE_STAGES) m->result = OT_RESULT_OVER;
 }
 
+uint8_t ot_match_winner(const OtMatch *m)
+{
+    if (m->phase != OT_FINISHED || m->result == OT_RESULT_NONE || m->result == OT_RESULT_EXIT)
+        return OT_EMPTY;
+    if (m->result == OT_RESULT_TIME) {
+        int black_expired = m->remaining_ms[0] == 0u;
+        int white_expired = m->remaining_ms[1] == 0u;
+        if (black_expired == white_expired) return OT_EMPTY;
+        return black_expired ? OT_WHITE : OT_BLACK;
+    }
+    if (m->game.black == m->game.white) return OT_EMPTY;
+    return m->game.black > m->game.white ? OT_BLACK : OT_WHITE;
+}
+
 void ot_match_set_standby(OtMatch *m, uint8_t standby)
 {
     if (m->standby == standby) return;

@@ -446,12 +446,19 @@ class BasicTests {
             Check(host.State.Match.Result==GameResult.Time && host.State.Match.Total==2 && host.State.Match.ElapsedMs==1000 &&
                 host.State.Match.BlackRemainingMs==0 && host.State.Match.WhiteRemainingMs==1000,
                 "timer settles exactly at limit and credits the current round");
+            Check(host.Message.Contains("黑方超时判负"),"a timed settlement names the side that ran out of time");
+            Check(GameArchive.Outcome(host.State.Black,host.State.White,true,GameResult.Time,
+                host.State.Match.BlackRemainingMs,host.State.Match.WhiteRemainingMs)=="白棋胜",
+                "the host reports the timeout loser as the loser regardless of the disc count");
         }
     }
 
     static void CheckClockPanel() {
         var serial=new FakeTransport();
-        using(var panel=new OthelloPanel(new GameArchive(Path.GetTempPath()),settings=>serial)) {
+        string archiveFolder=Path.Combine(Path.GetDirectoryName(typeof(BasicTests).Assembly.Location),
+            "clock-archive-"+Guid.NewGuid().ToString("N"));
+        try {
+        using(var panel=new OthelloPanel(new GameArchive(archiveFolder),settings=>serial)) {
             panel.CreateControl();panel.Start();
             FindControl<ComboBox>(panel,c=>c.Items.Contains("真实串口")).SelectedItem="真实串口";
             FindControl<ComboBox>(panel,c=>c.DropDownStyle==ComboBoxStyle.DropDown).Text="COM37";
@@ -507,6 +514,24 @@ class BasicTests {
                 "an actual missed poll still marks the connection unsynchronized and sends a recovery poll");
             serial.Inject(Protocol.Frame("@GAME6,8"+running+"176350"+scores+"176350,180000"));
             WaitForPanel(()=>move.Enabled && pause.Enabled,"the next confirmed poll recovers the connection");
+            WaitForPanel(()=>serial.Last.StartsWith("@SYNC6,9,"),"the recovered panel polls once more");
+            string expiredCells=new string('1',40)+new string('2',20)+new string('0',4);
+            serial.Inject(Protocol.Frame("@GAME6,9,5,0,1,40,20,"+expiredCells+",2,3,2,2,0,0,3000,0,2,180,0,80,0,0,1000"));
+            WaitForPanel(()=>FindControl<Label>(panel,l=>l.Text=="白棋胜")!=null,
+                "a black timeout shows white as the winner on the panel even with more black discs");
+            WaitForPanel(()=>clock.Text=="黑棋 00:00    白棋 00:01","the expired clock stays at zero next to the surviving clock");
+            int unreadable;
+            GameRecord timed=new GameArchive(archiveFolder).Load(out unreadable).Find(r=>r.Result==GameResult.Time);
+            Check(unreadable==0 && timed!=null && timed.BlackRemainingMs==0 && timed.WhiteRemainingMs==1000,
+                "a timed settlement archives both clocks");
+            Check(timed!=null && GameArchive.Outcome(timed)=="白棋胜",
+                "the archived timed round keeps the timeout loser even though black holds more discs");
+        }
+        } finally {
+            if(Directory.Exists(archiveFolder)) {
+                foreach(string file in Directory.GetFiles(archiveFolder)) File.Delete(file);
+                Directory.Delete(archiveFolder);
+            }
         }
     }
 
@@ -520,7 +545,17 @@ class BasicTests {
         Check(GameArchive.Outcome(record)=="白棋胜","terminal cells determine white victory independently of challenge WIN");
         frame.Cells=InitialBoard();
         record.Result=GameResult.Time;
-        Check(GameArchive.Outcome(record)=="平局","equal counts at timed settlement produce a draw");
+        record.BlackRemainingMs=0; record.WhiteRemainingMs=1000;
+        Check(GameArchive.Outcome(record)=="白棋胜","the side that runs out of time loses even when the discs are equal");
+        frame.Cells=new string('1',40)+new string('2',20)+new string('0',4);
+        Check(GameArchive.Outcome(record)=="白棋胜","a black timeout loses despite black holding more discs");
+        record.BlackRemainingMs=1000; record.WhiteRemainingMs=0;
+        Check(GameArchive.Outcome(record)=="黑棋胜","a white timeout loses despite white holding fewer discs");
+        record.BlackRemainingMs=0; record.WhiteRemainingMs=0;
+        Check(GameArchive.Outcome(record)=="黑棋胜","an unreconstructable timed settlement falls back to the disc count");
+        record.BlackRemainingMs=null; record.WhiteRemainingMs=null;
+        frame.Cells=InitialBoard();
+        Check(GameArchive.Outcome(record)=="平局","a legacy timed record without clocks still shows the disc outcome");
         frame.Cells=new string('1',30)+new string('2',16)+new string('0',18);
         record.Result=GameResult.Exit;
         Check(GameArchive.Outcome(record)=="未完成","exiting with more pieces does not award a win");

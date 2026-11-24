@@ -19,6 +19,7 @@ void AppBasic_GetSnapshot(AppBasicSnapshot *out)
     out->cursor_row = app.row;
     out->cursor_col = app.col;
     out->standby = app.match.standby;
+    out->winner = ot_match_winner(&app.match);
     out->result = app.match.result;
 }
 
