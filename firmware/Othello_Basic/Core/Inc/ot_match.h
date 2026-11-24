@@ -23,10 +23,11 @@ typedef struct {
     OtResult result;
     uint32_t round, total, remaining_ms[2], elapsed_ms, clock_ms;
     uint16_t limit_seconds, computer_wait_ms;
-    uint8_t losses, edited, clock_seen, stage, total_half_point;
+    uint8_t losses, edited, clock_seen, stage, total_half_point, standby;
 } OtMatch;
 
 void ot_match_init(OtMatch *match);
+void ot_match_set_standby(OtMatch *match, uint8_t standby);
 /* The completed round keeps its original mode for display and archiving. */
 OtMode ot_match_active_mode(const OtMatch *match);
 /* Returns true when the computer moves or the timer settles the round. */

@@ -35,6 +35,7 @@ namespace Othello.Basic {
         public int White { get; private set; }
         public string Cells { get; private set; }
         public MatchState Match { get; internal set; }
+        public bool Standby { get; internal set; }
         public bool ComputerOpponent { get; internal set; }
         public bool ComputerTurn { get { return ComputerOpponent && Turn==2 && Match.Phase==GamePhase.Running; } }
         public bool ExternalAiTurn { get { return Match!=null && Match.Mode==GameMode.ExternalAi &&
@@ -78,7 +79,8 @@ namespace Othello.Basic {
         }
         public static BoardState ParseState(string[] f) {
             bool keyboardAi=f.Length==21 && f[0]=="@GAME4";
-            bool clocks=f.Length==23 && f[0]=="@GAME6";
+            bool standbyFormat=f.Length==24 && f[0]=="@GAME7";
+            bool clocks=standbyFormat || (f.Length==23 && f[0]=="@GAME6");
             bool externalAi=clocks || (f.Length==21 && f[0]=="@GAME5");
             bool staged=keyboardAi || externalAi || (f.Length==21 && f[0]=="@GAME3");
             bool advanced=staged || (f.Length==18 && (f[0]=="@GAME" || f[0]=="@GAME2"));
@@ -113,6 +115,11 @@ namespace Othello.Basic {
                         (mode==2 && (result==2)!=(blackRemaining==0 || whiteRemaining==0)) ||
                         (mode==2 && status==0 && remaining!=(turn==1?blackRemaining:whiteRemaining)))
                         throw new FormatException("黑白双方计时状态不合法");
+                }
+                if(standbyFormat) {
+                    uint standby=Number(f[23]);
+                    if(standby>1 || (standby!=0 && phase!=3)) throw new FormatException("待机状态不合法");
+                    state.Standby=standby!=0;
                 }
                 GameMode roundMode=(GameMode)mode;
                 GameMode activeMode=(keyboardAi||externalAi) && (result==4 || result==5) ? GameMode.Casual : roundMode;

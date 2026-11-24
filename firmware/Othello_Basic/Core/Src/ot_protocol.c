@@ -22,7 +22,7 @@ int ot_state(const OtGame *g, uint32_t seq, char *out, size_t cap)
 
 int ot_match_state(const OtMatch *m, OtStateFormat format, uint32_t seq, char *out, size_t cap)
 {
-    static const char *const tags[] = { "@STATE", "@GAME", "@GAME2", "@GAME3", "@GAME4", "@GAME5", "@GAME6" };
+    static const char *const tags[] = { "@STATE", "@GAME", "@GAME2", "@GAME3", "@GAME4", "@GAME5", "@GAME6", "@GAME7" };
     OtMode wire_mode = m->mode == OT_EXTERNAL_AI && format < OT_FORMAT_EXTERNAL_AI ? OT_CASUAL : m->mode;
     uint32_t remaining = m->result == OT_RESULT_TIME ? 0u : m->remaining_ms[m->game.turn == OT_WHITE ? 1u : 0u];
     int base, n;
@@ -41,9 +41,14 @@ int ot_match_state(const OtMatch *m, OtStateFormat format, uint32_t seq, char *o
         if (n < 0 || (size_t)n >= cap - (size_t)base) return -1;
         base += n;
     }
-    if (format == OT_FORMAT_CLOCKS) {
+    if (format >= OT_FORMAT_CLOCKS) {
         n = snprintf(out + base, cap - (size_t)base, ",%lu,%lu",
                      (unsigned long)m->remaining_ms[0], (unsigned long)m->remaining_ms[1]);
+        if (n < 0 || (size_t)n >= cap - (size_t)base) return -1;
+        base += n;
+    }
+    if (format == OT_FORMAT_STANDBY) {
+        n = snprintf(out + base, cap - (size_t)base, ",%u", (unsigned)m->standby);
         if (n < 0 || (size_t)n >= cap - (size_t)base) return -1;
         base += n;
     }
@@ -84,6 +89,7 @@ int ot_match_command(OtMatch *m, OtStateFormat *format, const char *line, char *
         else if (!strcmp(buf, "@SYNC4")) reply = OT_FORMAT_KEYBOARD_AI;
         else if (!strcmp(buf, "@SYNC5")) reply = OT_FORMAT_EXTERNAL_AI;
         else if (!strcmp(buf, "@SYNC6")) reply = OT_FORMAT_CLOCKS;
+        else if (!strcmp(buf, "@SYNC7")) reply = OT_FORMAT_STANDBY;
         else return err(seq, "COMMAND", out, cap);
         *format = reply == OT_FORMAT_COMPUTER ? OT_FORMAT_ADVANCED : reply;
         return ot_match_state(m, reply, seq, out, cap);
@@ -95,6 +101,7 @@ int ot_match_command(OtMatch *m, OtStateFormat *format, const char *line, char *
     if (!move && strcmp(buf, "@CTL") && strcmp(buf, "@EDIT")) return err(seq, "COMMAND", out, cap);
     if (count != (move ? 5u : 6u) || !number(fields[2], &revision)) return err(seq, "FORMAT", out, cap);
     if (revision != m->game.revision) return err(seq, "STALE", out, cap);
+    if (m->standby) return err(seq, "STANDBY", out, cap);
     if (!strcmp(buf, "@CTL")) {
         for (action = 0; action < sizeof(names) / sizeof(names[0]); ++action)
             if (!strcmp(fields[3], names[action])) break;

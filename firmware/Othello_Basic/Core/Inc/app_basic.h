@@ -3,13 +3,13 @@
 #include "ot_match.h"
 #include <stddef.h>
 
-#define APP_BASIC_API_VERSION 0x00020000UL
+#define APP_BASIC_API_VERSION 0x00030000UL
 #define APP_BASIC_MAX_OBSERVERS 4u
 
 typedef struct {
     uint32_t api_version;
     OtGame game; /* Value copy: never a writable pointer to the authoritative game. */
-    uint8_t cursor_row, cursor_col;
+    uint8_t cursor_row, cursor_col, standby;
     OtResult result;
 } AppBasicSnapshot;
 
@@ -27,7 +27,7 @@ typedef struct {
 
 void AppBasic_Init(const AppBasicPorts *ports);
 void AppBasic_Tick(uint32_t now_ms);
-void AppBasic_HandleKey(char key);
+void AppBasic_HandleKey(uint8_t key); /* Physical S1 through S16. */
 /* Returns 0 under TX backpressure: caller must retain and retry this frame. */
 uint8_t AppBasic_ProcessFrame(const char *frame);
 void AppBasic_GetSnapshot(AppBasicSnapshot *destination);

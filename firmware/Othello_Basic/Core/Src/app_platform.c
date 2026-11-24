@@ -1,5 +1,6 @@
 #include "app_platform.h"
 #include "app_config.h"
+#include "app_led_display.h"
 #include "app_led_heart.h"
 #include "ot_protocol.h"
 #include "tim.h"
@@ -14,7 +15,8 @@ static uint8_t rx_bytes[RX_SIZE], rx_byte;
 static volatile uint8_t rx_fault, rx_rearm;
 static struct { char bytes[OT_LINE_MAX]; uint16_t length; } tx[TX_SLOTS];
 static volatile uint8_t tx_head, tx_tail, tx_active;
-static char line[OT_LINE_MAX], key_event;
+static char line[OT_LINE_MAX];
+static uint8_t key_event;
 static size_t line_length;
 static uint8_t drop_line;
 static AppPlatformDiagnostics diagnostics;
@@ -23,9 +25,11 @@ static uint16_t scan_mask, candidate_mask, stable_mask;
 static uint32_t scan_at, candidate_at;
 static const uint16_t rows[4] = { KEY_ROW0_Pin, KEY_ROW1_Pin, KEY_ROW2_Pin, KEY_ROW3_Pin };
 static const uint16_t columns[4] = { KEY_COL0_Pin, KEY_COL1_Pin, KEY_COL2_Pin, KEY_COL3_Pin };
-static const char keymap[16] = { '1','2','3','A','4','5','6','B','7','8','9','C','*','0','#','D' };
 static union { uint32_t alignment; uint16_t words[LED_WORDS]; } pwm;
-static uint8_t desired_board[64], desired_row, desired_col, desired_cursor, led_dirty;
+static uint8_t desired_board[64], desired_row, desired_col, desired_cursor, desired_turn, led_dirty;
+static uint8_t desired_standby;
+static uint32_t welcome_at;
+static unsigned welcome_step;
 static OtResult desired_result;
 static uint8_t desired_winner, marquee_visible;
 static uint32_t result_revision, heart_at, marquee_at;
@@ -147,12 +151,12 @@ static void scan_keyboard(uint32_t now)
     key_locked = 1u; /* A single press or a chord requires a complete release next. */
     if (mask & (uint16_t)(mask - 1u)) return;
     for (index = 0u; index < 16u; ++index)
-        if (mask == (uint16_t)(1u << index)) { key_event = keymap[index]; break; }
+        if (mask == (uint16_t)(1u << index)) { key_event = (uint8_t)(index + 1u); break; }
 }
 
-char AppPlatform_TakeKey(void)
+uint8_t AppPlatform_TakeKey(void)
 {
-    char key = key_event;
+    uint8_t key = key_event;
     key_event = 0;
     return key;
 }
@@ -165,6 +169,12 @@ void AppPlatform_Render(const AppBasicSnapshot *snapshot, uint8_t cursor, void *
     desired_row = snapshot->cursor_row;
     desired_col = snapshot->cursor_col;
     desired_cursor = cursor;
+    desired_turn = snapshot->game.turn;
+    if (snapshot->standby && !desired_standby) {
+        welcome_at = HAL_GetTick();
+        welcome_step = 0u;
+    }
+    desired_standby = snapshot->standby;
     if (desired_result != snapshot->result || (winner && result_revision != snapshot->game.revision)) {
         desired_result = snapshot->result;
         desired_winner = winner;
@@ -206,11 +216,15 @@ static void refresh_led(uint32_t now)
 {
     unsigned pixel, row, col, index, bit, word;
     uint32_t color;
-    uint8_t red, green, blue, piece;
     uint32_t heart_elapsed = now - heart_at;
-    uint8_t marquee = (uint8_t)((desired_result == OT_RESULT_WIN || desired_result == OT_RESULT_OVER) &&
+    uint8_t marquee = (uint8_t)(!desired_standby && (desired_result == OT_RESULT_WIN || desired_result == OT_RESULT_OVER) &&
                               (!desired_winner || heart_elapsed >= APP_LED_HEART_DURATION_MS));
-    uint8_t heart = (uint8_t)(desired_winner && !marquee);
+    uint8_t heart = (uint8_t)(!desired_standby && desired_winner && !marquee);
+    if (desired_standby && (uint32_t)(now - welcome_at) >= APP_LED_WELCOME_STEP_MS) {
+        welcome_at = now;
+        welcome_step = (welcome_step + 1u) % APP_LED_WELCOME_STEPS;
+        led_dirty = 1u;
+    }
     if (marquee && !marquee_visible) {
         marquee_visible = 1u;
         marquee_at = now;
@@ -237,30 +251,19 @@ static void refresh_led(uint32_t now)
     word = 0u;
     pwm.words[word++] = 0u;
     for (pixel = 0u; pixel < 64u; ++pixel) {
-        uint8_t selected, level;
         row = pixel / 8u; col = pixel % 8u;
         if (APP_LED_SERPENTINE && (row & 1u)) col = 7u - col;
         index = row * 8u + col;
-        piece = heart ? (app_led_heart_pixel(row, col, heart_lit) ? desired_winner : OT_EMPTY) : desired_board[index];
-        selected = (uint8_t)(!heart && desired_cursor && row == desired_row && col == desired_col);
-        level = selected ? APP_LED_CURSOR_LEVEL : APP_LED_PIECE_LEVEL;
-        red = green = blue = 0u;
-        if (piece == OT_BLACK) {          /* Orange */
-            red = level;
-            green = level / 4u;
-        } else if (piece == OT_WHITE) {   /* Cyan */
-            green = blue = level;
-        } else if (selected) {            /* Purple cursor on an empty square */
-            red = level / 2u;
-            blue = level;
+        if (desired_standby) color = app_led_welcome_pixel(row, col, welcome_step);
+        else if (marquee) {
+            color = marquee_pixel(row, col) ?
+                (uint32_t)APP_LED_PIECE_LEVEL << (desired_result == OT_RESULT_WIN ? 16u : 8u) : 0u;
+        } else if (heart) {
+            color = app_led_heart_pixel(row, col, heart_lit) ? app_led_piece_color(desired_winner, APP_LED_PIECE_LEVEL) : 0u;
+        } else {
+            uint8_t selected = (uint8_t)(desired_cursor && row == desired_row && col == desired_col);
+            color = app_led_board_pixel(desired_board[index], selected, desired_turn);
         }
-        if (marquee) {
-            uint8_t lit = marquee_pixel(row, col) ? APP_LED_PIECE_LEVEL : 0u;
-            red = desired_result == OT_RESULT_OVER ? lit : 0u;
-            green = desired_result == OT_RESULT_WIN ? lit : 0u;
-            blue = 0u;
-        }
-        color = ((uint32_t)green << 16) | ((uint32_t)red << 8) | blue;
         for (bit = 0u; bit < 24u; ++bit)
             pwm.words[word++] = (color & (1UL << (23u - bit))) ? APP_LED_ONE_TICKS : APP_LED_ZERO_TICKS;
     }
@@ -289,6 +292,7 @@ void AppPlatform_Init(void)
     HAL_GPIO_WritePin(GPIOB, rows[0] | rows[1] | rows[2] | rows[3], GPIO_PIN_SET);
     HAL_GPIO_WritePin(GPIOB, rows[0], GPIO_PIN_RESET);
     led_busy = led_done = led_fault = led_dirty = 0u;
+    desired_standby = 0u;
 }
 
 void AppPlatform_Tick(uint32_t now)

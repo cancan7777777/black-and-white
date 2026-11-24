@@ -11,6 +11,7 @@
    roughly 1 A from the 5 V rail. The cursor level must differ from the piece
    level, otherwise the cursor is invisible on a stone of the same hue. */
 #define APP_LED_PIECE_LEVEL 48u
+#define APP_LED_PREVIEW_LEVEL 56u
 #define APP_LED_CURSOR_LEVEL 110u
 #define APP_KEY_DEBOUNCE_MS 20u
 #endif
