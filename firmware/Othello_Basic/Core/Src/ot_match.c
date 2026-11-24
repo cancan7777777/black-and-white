@@ -110,7 +110,7 @@ static int corner(uint8_t row, uint8_t col)
     return (row == 0u || row == 7u) && (col == 0u || col == 7u);
 }
 
-static unsigned greedy_move(const OtGame *game, int prefer_corner)
+static unsigned greedy_move(const OtGame *game)
 {
     OtGame candidate;
     unsigned square, best = 64u, best_white = 0u;
@@ -118,7 +118,7 @@ static unsigned greedy_move(const OtGame *game, int prefer_corner)
         uint8_t row = (uint8_t)(square / 8u), col = (uint8_t)(square % 8u);
         candidate = *game;
         if (!ot_move(&candidate, row, col)) continue;
-        if (prefer_corner && corner(row, col)) return square;
+        if (corner(row, col)) return square;
         if (candidate.white > best_white) {
             best = square;
             best_white = candidate.white;
@@ -154,6 +154,52 @@ static int position_value(const OtGame *game)
     return score;
 }
 
+enum { PRACTICE_DISC_TARGET = 46 };
+
+static int practice_reply_cost(const OtGame *game)
+{
+    OtGame reply;
+    unsigned square, replies = 0u, early_finishes = 0u, black_total = 0u;
+    if (game->status == OT_OVER) return 0;
+    for (square = 0u; square < 64u; ++square) {
+        reply = *game;
+        if (!ot_move(&reply, (uint8_t)(square / 8u), (uint8_t)(square % 8u))) continue;
+        ++replies;
+        black_total += reply.black;
+        if (reply.status == OT_OVER && reply.black < PRACTICE_DISC_TARGET) ++early_finishes;
+    }
+    if (replies == 0u) return 0;
+    return (int)(800u * early_finishes / replies) - (int)(4u * black_total / replies);
+}
+
+static unsigned practice_move(const OtGame *game, unsigned stage)
+{
+    struct { int16_t score; uint8_t square; } choices[64];
+    OtGame candidate;
+    unsigned square, count = 0u, playable = 0u;
+    for (square = 0u; square < 64u; ++square) {
+        unsigned slot;
+        int score, closes_early;
+        candidate = *game;
+        if (!ot_move(&candidate, (uint8_t)(square / 8u), (uint8_t)(square % 8u))) continue;
+        /* Leave scoring opportunities before the strongest opponent in stage four. */
+        closes_early = candidate.status == OT_OVER && candidate.black < PRACTICE_DISC_TARGET;
+        score = position_value(&candidate) + practice_reply_cost(&candidate) + (closes_early ? 4000 : 0);
+        if (!closes_early) ++playable;
+        slot = count++;
+        while (slot > 0u && score < choices[slot - 1u].score) {
+            choices[slot] = choices[slot - 1u];
+            --slot;
+        }
+        choices[slot].score = (int16_t)score;
+        choices[slot].square = (uint8_t)square;
+    }
+    if (count == 0u) return 64u;
+    if (playable != 0u) count = playable;
+    /* Rank from White's weakest move toward its strongest as the stages progress. */
+    return choices[((count - 1u) * (stage - 1u) + 3u) / 6u].square;
+}
+
 enum { SEARCH_BOUND = 2000, SEARCH_NODES = 256 };
 
 static int search_position(const OtGame *game, unsigned plies, int alpha, int beta,
@@ -184,11 +230,13 @@ static int search_position(const OtGame *game, unsigned plies, int alpha, int be
 
 static uint8_t play_computer_move(OtMatch *m)
 {
-    unsigned best = greedy_move(&m->game, m->stage >= 2u);
-    if (best < 64u && m->stage >= 3u) {
+    unsigned best;
+    if (m->stage > 0u && m->stage < OT_CHALLENGE_STAGES) best = practice_move(&m->game, m->stage);
+    else {
         unsigned depth, nodes_left = SEARCH_NODES;
+        best = greedy_move(&m->game);
         /* Keep the last completed search if the next depth exhausts the budget. */
-        for (depth = 1u; depth < m->stage && nodes_left != 0u; ++depth) {
+        for (depth = 1u; depth < m->stage && best < 64u && nodes_left != 0u; ++depth) {
             unsigned move = best;
             (void)search_position(&m->game, depth, -SEARCH_BOUND, SEARCH_BOUND, &nodes_left, &move);
             if (nodes_left != 0u) best = move;

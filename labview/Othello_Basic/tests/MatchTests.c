@@ -52,7 +52,7 @@ static void play_seed(OtMatch *match, uint32_t seed)
 
 static void prove_natural_win(void)
 {
-    static const uint32_t seeds[] = {23u,33u,49u,1343u};
+    static const uint32_t seeds[] = {1u,2u,4u,1343u};
     OtMatch match;
     unsigned stage;
     ot_match_init(&match);
@@ -385,8 +385,8 @@ int main(void)
     test_welcome_animation();
     exercise_hardware_path();
     {
-        static const unsigned late_choices[] = {15u,7u,63u,7u};
-        static const unsigned early_choices[] = {52u,52u,30u,42u};
+        static const unsigned late_choices[] = {51u,59u,61u,7u};
+        static const unsigned early_choices[] = {45u,43u,43u,42u};
         check_challenge_choices("1111021021122110212212122121221222122112222222122220120122000000",late_choices);
         check_challenge_choices("0000000000000000000000100002210000011000000010000000000000000000",early_choices);
     }
