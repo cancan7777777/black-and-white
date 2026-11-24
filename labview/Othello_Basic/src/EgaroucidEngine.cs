@@ -12,17 +12,18 @@ namespace Othello.Basic {
     internal sealed class PositionAnalysis {
         internal readonly int Cell;
         internal readonly int? BlackDiscDifference;
-        internal PositionAnalysis(int cell,int? blackDiscDifference) {
-            Cell=cell;BlackDiscDifference=blackDiscDifference;
+        internal readonly bool UsedFallback;
+        internal PositionAnalysis(int cell,int? blackDiscDifference,bool usedFallback) {
+            Cell=cell;BlackDiscDifference=blackDiscDifference;UsedFallback=usedFallback;
         }
     }
 
     internal sealed class EgaroucidEngine {
         internal static readonly string ConfigPath=Path.Combine(
             Path.GetDirectoryName(new Uri(typeof(EgaroucidEngine).Assembly.CodeBase).LocalPath),"EgaroucidPath.txt");
-        static readonly Regex Coordinate=new Regex(@"\A([a-h])([1-8])\z",RegexOptions.IgnoreCase|RegexOptions.CultureInvariant);
-        static readonly Regex ScoredMove=new Regex(@"^\|[ \t]*\d+[ \t]*\|[^|\r\n]+\|[ \t]*([a-h][1-8])[ \t]*\|[ \t]*([+-]?\d+)[ \t]*\|",
-            RegexOptions.Multiline|RegexOptions.IgnoreCase|RegexOptions.CultureInvariant);
+        static readonly Regex EngineReply=new Regex(@"\A([a-h])([1-8])(?:[ \t]+([+-]?\d+))?\z",
+            RegexOptions.IgnoreCase|RegexOptions.CultureInvariant);
+        const int MoveBudgetMs=6000, OutlookBudgetMs=1500, FallbackBudgetMs=4000;
         readonly string executable;
         readonly int level;
         internal EgaroucidEngine(string executable,int level) {
@@ -37,21 +38,23 @@ namespace Othello.Basic {
         }
         internal PositionAnalysis Analyze(BoardState board,CancellationToken cancellation) {
             if(board.Status!=0||(board.Turn!=1&&board.Turn!=2)) throw new InvalidOperationException("棋局没有待分析的回合");
-            var clock=Stopwatch.StartNew();
-            string reply=Run(board,cancellation,clock,false);
-            var scored=ScoredMove.Match(reply);
-            if(scored.Success) {
-                int value;
-                int? difference=int.TryParse(scored.Groups[2].Value,NumberStyles.AllowLeadingSign,
-                    CultureInfo.InvariantCulture,out value)&&value>=-64&&value<=64?(int?)(board.Turn==1?value:-value):null;
-                return new PositionAnalysis(ReadCell(board,scored.Groups[1].Value),difference);
+            try {
+                string reply=Run(board,cancellation,"-level "+level.ToString(CultureInfo.InvariantCulture),
+                    board.Turn==2?MoveBudgetMs:OutlookBudgetMs);
+                return ReadAnalysis(board,reply,false);
+            } catch(TimeoutException) {
+                cancellation.ThrowIfCancellationRequested();
+                try {
+                    return ReadAnalysis(board,Run(board,cancellation,"-time 2",FallbackBudgetMs),true);
+                } catch(TimeoutException) {
+                    throw new TimeoutException("Egaroucid 原等级及限时重试均已超时。");
+                }
             }
-            if(board.Turn==1) return new PositionAnalysis(-1,null);
-            return new PositionAnalysis(ReadCell(board,Run(board,cancellation,clock,true)),null);
         }
-        string Run(BoardState board,CancellationToken cancellation,Stopwatch clock,bool quiet) {
+        string Run(BoardState board,CancellationToken cancellation,string searchOptions,int budgetMs) {
+            var clock=Stopwatch.StartNew();
             string position=board.Cells.Replace('0','-').Replace('1','B').Replace('2','W');
-            string arguments=(quiet?"-quiet ":"")+"-mode 3 -nobook -threads 2 -noautopass -level "+level.ToString(CultureInfo.InvariantCulture);
+            string arguments="-quiet -showvalue -mode 3 -nobook -threads 2 -noautopass "+searchOptions;
             var setup=new ProcessStartInfo(executable,arguments) {
                 UseShellExecute=false,CreateNoWindow=true,WorkingDirectory=Path.GetDirectoryName(executable),
                 RedirectStandardInput=true,RedirectStandardOutput=true,RedirectStandardError=true,
@@ -75,10 +78,10 @@ namespace Othello.Basic {
                     var readers=new Task[]{output,errors};
                     while(!process.WaitForExit(40)||!Task.WaitAll(readers,40)) {
                         cancellation.ThrowIfCancellationRequested();
-                        if(clock.ElapsedMilliseconds>=10000) throw new TimeoutException("Egaroucid 思考超过 10 秒，可降低 AI 等级后重试");
+                        if(clock.ElapsedMilliseconds>=budgetMs) throw new TimeoutException();
                     }
                     cancellation.ThrowIfCancellationRequested();
-                    if(clock.ElapsedMilliseconds>=10000) throw new TimeoutException("Egaroucid 思考超过 10 秒，可降低 AI 等级后重试");
+                    if(clock.ElapsedMilliseconds>=budgetMs) throw new TimeoutException();
                     if(process.ExitCode!=0)
                         throw new InvalidOperationException("Egaroucid 退出代码 0x"+process.ExitCode.ToString("X8",CultureInfo.InvariantCulture));
                     string diagnostic=errors.Result.Replace(">","").Trim();
@@ -103,12 +106,15 @@ namespace Othello.Basic {
             int newline=text.IndexOfAny(new[]{'\r','\n'});
             return newline<0?text:text.Substring(0,newline);
         }
-        static int ReadCell(BoardState board,string coordinate) {
-            var move=Coordinate.Match(coordinate);
+        static PositionAnalysis ReadAnalysis(BoardState board,string reply,bool usedFallback) {
+            var move=EngineReply.Match(reply);
             if(!move.Success) throw new InvalidOperationException("Egaroucid 没有返回有效坐标");
             int row=move.Groups[2].Value[0]-'1',col=char.ToLowerInvariant(move.Groups[1].Value[0])-'a';
             if(!CanFlip(board.Cells,row,col,board.Turn)) throw new InvalidOperationException("Egaroucid 给出的落子不合法");
-            return row*8+col;
+            int value;
+            int? difference=int.TryParse(move.Groups[3].Value,NumberStyles.AllowLeadingSign,CultureInfo.InvariantCulture,out value)
+                && value>=-64 && value<=64?(int?)(board.Turn==1?value:-value):null;
+            return new PositionAnalysis(row*8+col,difference,usedFallback);
         }
         static bool CanFlip(string cells,int row,int col,int turn) {
             if(cells[row*8+col]!='0') return false;

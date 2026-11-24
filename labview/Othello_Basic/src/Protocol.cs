@@ -22,6 +22,7 @@ namespace Othello.Basic {
         public uint RemainingMs { get; internal set; }
         public uint? BlackRemainingMs { get; internal set; }
         public uint? WhiteRemainingMs { get; internal set; }
+        internal int TimeoutSide { get; set; }
         public uint ElapsedMs { get; internal set; }
         public uint LimitSeconds { get; internal set; }
         public bool Edited { get; internal set; }
@@ -42,6 +43,11 @@ namespace Othello.Basic {
             Match.Phase==GamePhase.Running && Status==0 && Turn==2; } }
         public BoardState(uint seq, uint revision, int turn, int status, int black, int white, string cells) {
             Sequence=seq; Revision=revision; Turn=turn; Status=status; Black=black; White=white; Cells=cells;
+        }
+        internal int TurnBeforeTimeout(BoardState previous) {
+            if(previous==null || previous.Status!=0 || (previous.Turn!=1 && previous.Turn!=2) || previous.Revision==0 ||
+                (previous.Revision==uint.MaxValue?1u:previous.Revision+1u)!=Revision || previous.Cells!=Cells) return 0;
+            return previous.Turn;
         }
     }
     public static class Protocol {
