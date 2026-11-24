@@ -218,9 +218,13 @@ class BasicTests {
             Check(serial.Last.StartsWith("@SYNC5,3,") && board.Board.Revision==3,"missing engine sends no fallback move");
 
             File.WriteAllText(EgaroucidEngine.ConfigPath,enginePath);
+            FindControl<ComboBox>(panel,c=>c.Items.Contains("AI 对弈")).SelectedItem="AI 对弈";
+            FindControl<NumericUpDown>(panel,n=>n.Maximum==60).Value=60;
             refresh.PerformClick();
             serial.Inject(ExternalState(4,model.State));
-            WaitForPanel(()=>serial.Last.StartsWith("@AI,5,3,"),"real EN returns a versioned white move after S1",12000);
+            WaitForPanel(()=>serial.Last.StartsWith("@AI,5,3,"),"real EN returns a versioned white move after the level-60 search times out",12000);
+            Check(FindControl<TextBox>(panel,t=>t.Multiline&&t.ReadOnly).Text.Contains("本手改用限时搜索"),
+                "the timed retry is automatic and recorded in the communication log");
             string[] command=Protocol.Fields(serial.Last);
             uint before=model.State.Revision;
             model.EngineMove((int)Protocol.Number(command[3]),(int)Protocol.Number(command[4]));
@@ -447,8 +451,7 @@ class BasicTests {
                 host.State.Match.BlackRemainingMs==0 && host.State.Match.WhiteRemainingMs==1000,
                 "timer settles exactly at limit and credits the current round");
             Check(host.Message.Contains("黑方超时判负"),"a timed settlement names the side that ran out of time");
-            Check(GameArchive.Outcome(host.State.Black,host.State.White,true,GameResult.Time,
-                host.State.Match.BlackRemainingMs,host.State.Match.WhiteRemainingMs)=="白棋胜",
+            Check(GameArchive.Outcome(host.State)=="白棋胜",
                 "the host reports the timeout loser as the loser regardless of the disc count");
         }
     }
@@ -552,16 +555,40 @@ class BasicTests {
         record.BlackRemainingMs=1000; record.WhiteRemainingMs=0;
         Check(GameArchive.Outcome(record)=="黑棋胜","a white timeout loses despite white holding fewer discs");
         record.BlackRemainingMs=0; record.WhiteRemainingMs=0;
-        Check(GameArchive.Outcome(record)=="黑棋胜","an unreconstructable timed settlement falls back to the disc count");
+        Check(GameArchive.Outcome(record)=="超时（胜方未知）","two expired clocks cannot determine a winner from the disc count");
         record.BlackRemainingMs=null; record.WhiteRemainingMs=null;
-        frame.Cells=InitialBoard();
-        Check(GameArchive.Outcome(record)=="平局","a legacy timed record without clocks still shows the disc outcome");
+        Check(GameArchive.Outcome(record)=="超时（胜方未知）","a legacy record with no clocks or previous turn has no inferred winner");
+        frame.Revision=8;
+        record.Frames.Insert(0,new ReplayFrame { Status=0, Cells=frame.Cells, Turn=1, Revision=7 });
+        Check(GameArchive.Outcome(record)=="白棋胜","a legacy replay infers the timeout from a consecutive unchanged board");
+        record.Frames[0].Revision=6;
+        Check(GameArchive.Outcome(record)=="超时（胜方未知）","a missing legacy frame prevents inferring the timeout loser");
         frame.Cells=new string('1',30)+new string('2',16)+new string('0',18);
         record.Result=GameResult.Exit;
         Check(GameArchive.Outcome(record)=="未完成","exiting with more pieces does not award a win");
         record.Result=GameResult.Board;
         frame.Status=0;
         Check(GameArchive.Outcome(record)=="未完成","a replay without a terminal frame has no outcome");
+    }
+
+    static void CheckLegacyTimeout() {
+        var serial=new FakeTransport();
+        string cells=new string('1',20)+new string('2',40)+new string('0',4);
+        string terminal=",21,0,1,20,40,"+cells+",2,3,3,20,0,0,1000,0,2,1,0,40,0";
+        using(var host=new HostSession()) {
+            host.Connect(serial);
+            serial.Inject(Protocol.Frame("@GAME5,1,20,2,0,20,40,"+cells+",2,0,3,0,0,700,300,0,0,1,0,40,0"));
+            serial.Inject(Protocol.Frame("@GAME5,0"+terminal));
+            Check(GameArchive.Outcome(host.State)=="黑棋胜" && host.Message.Contains("白方超时判负"),
+                "a legacy live timeout uses the preceding turn even when white holds more discs");
+            serial.Inject(Protocol.Frame("@GAME5,0"+terminal));
+            Check(GameArchive.Outcome(host.State)=="黑棋胜","a repeated terminal frame retains the inferred outcome");
+        }
+        using(var host=new HostSession()) {
+            host.Connect(serial);
+            serial.Inject(Protocol.Frame("@GAME5,1"+terminal));
+            Check(GameArchive.Outcome(host.State)=="超时（胜方未知）","joining a finished legacy game does not guess the winner");
+        }
     }
 
     static GameRecord AiRecord(int black,int white,GameResult result=GameResult.Board) {
@@ -749,6 +776,7 @@ class BasicTests {
             CheckAdvanced();
             CheckClockPanel();
             CheckOutcomes();
+            CheckLegacyTimeout();
             CheckAiHistory();
             CheckArchive();
             Console.WriteLine("PASS "+checks+" checks: framing, modes, editor, timers, replay, ranking, reconnect, panel actions");

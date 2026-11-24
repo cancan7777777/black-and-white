@@ -154,6 +154,17 @@ namespace Othello.Basic {
                     if(fields[0]=="@GAME2") computerSupported=true;
                     state.ComputerOpponent=computerSupported && state.Match!=null &&
                         (state.Match.ActiveMode==GameMode.Challenge || state.Match.ActiveMode==GameMode.Ai);
+                    if(state.Match!=null && state.Match.Result==GameResult.Time) {
+                        int loser=GameArchive.TimeoutLoser(state.Match.BlackRemainingMs,state.Match.WhiteRemainingMs);
+                        if(loser==0 && State!=null && State.Match!=null && State.Match.Mode==GameMode.Timed &&
+                            State.Match.Round==state.Match.Round) {
+                            if(State.Match.Result==GameResult.Time && State.Revision==state.Revision && State.Cells==state.Cells)
+                                loser=State.Match.TimeoutSide;
+                            else if(State.Match.Phase==GamePhase.Running)
+                                loser=state.TurnBeforeTimeout(State);
+                        }
+                        state.Match.TimeoutSide=loser;
+                    }
                     State=state;
                     needsSync=false;
                     if(state.Sequence!=0 && state.Sequence==pending) {
@@ -199,8 +210,8 @@ namespace Othello.Basic {
                     case GameResult.Win: return "WIN · 已达 188 分"+challengeExit;
                     case GameResult.Over: return (state.Match.Losses==2 ? "OVER · 两连败" : "OVER · 四关未达 188 分")+challengeExit;
                     case GameResult.Time: {
-                        int loser=GameArchive.TimeoutLoser(state.Match.BlackRemainingMs,state.Match.WhiteRemainingMs);
-                        return loser==1?"计时结束 · 黑方超时判负":loser==2?"计时结束 · 白方超时判负":"计时结束，已结算";
+                        int loser=state.Match.TimeoutSide;
+                        return loser==1?"计时结束 · 黑方超时判负":loser==2?"计时结束 · 白方超时判负":"计时结束 · 胜方未知";
                     }
                     case GameResult.Exit: return "已结束退出，本局不计分";
                 }

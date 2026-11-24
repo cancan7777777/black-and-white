@@ -29,6 +29,8 @@ namespace Othello.Basic {
         public uint ElapsedMs { get; set; }
         public uint? BlackRemainingMs { get; set; }
         public uint? WhiteRemainingMs { get; set; }
+        [System.ComponentModel.DefaultValue(0)]
+        public int TimeoutSide { get; set; }
         public bool Edited { get; set; }
         public bool Simulated { get; set; }
         public bool Complete { get; set; }
@@ -74,6 +76,7 @@ namespace Othello.Basic {
             current.Result=match.Result; current.Score=match.Score; current.Total=match.TotalScore; current.Stage=match.Stage;
             current.ElapsedMs=match.ElapsedMs; current.Edited=match.Edited;
             current.BlackRemainingMs=match.BlackRemainingMs; current.WhiteRemainingMs=match.WhiteRemainingMs;
+            current.TimeoutSide=match.TimeoutSide;
             Directory.CreateDirectory(folder);
             string path=Path.Combine(folder,current.Id+".xml");
             if(!File.Exists(path)) {
@@ -141,25 +144,29 @@ namespace Othello.Basic {
         }
         // 1 = 黑方超时, 2 = 白方超时, 0 = 无法从计时状态判定。超时的一方判负，与子数无关。
         internal static int TimeoutLoser(uint? blackRemaining,uint? whiteRemaining) {
+            if(!blackRemaining.HasValue || !whiteRemaining.HasValue) return 0;
             bool blackExpired=blackRemaining==0,whiteExpired=whiteRemaining==0;
             if(blackExpired==whiteExpired) return 0;
             return blackExpired?1:2;
         }
         internal static string TimedOutcome(int loser) {
-            return loser==1?"白棋胜":loser==2?"黑棋胜":"平局";
+            return loser==1?"白棋胜":loser==2?"黑棋胜":"超时（胜方未知）";
         }
-        internal static string Outcome(int black,int white,bool settled,GameResult result,uint? blackRemaining,uint? whiteRemaining) {
-            if(!settled) return "未完成";
-            if(result==GameResult.Time) {
-                int loser=TimeoutLoser(blackRemaining,whiteRemaining);
-                if(loser!=0) return TimedOutcome(loser);
-            }
-            return Outcome(black,white,true);
+        internal static string Outcome(BoardState state) {
+            if(state.Match!=null && state.Match.Result==GameResult.Time) return TimedOutcome(state.Match.TimeoutSide);
+            return Outcome(state.Black,state.White,state.Match==null || state.Match.Result!=GameResult.Exit);
         }
         internal static string Outcome(GameRecord record) {
             int? difference=FinalDiscDifference(record);
             if(!difference.HasValue) return "未完成";
-            return Outcome(difference.GetValueOrDefault(),0,true,record.Result,record.BlackRemainingMs,record.WhiteRemainingMs);
+            if(record.Result!=GameResult.Time) return Outcome(difference.Value,0,true);
+            int loser=TimeoutLoser(record.BlackRemainingMs,record.WhiteRemainingMs);
+            if(loser==0 && (record.TimeoutSide==1 || record.TimeoutSide==2)) loser=record.TimeoutSide;
+            if(loser==0 && record.Frames.Count>=2) {
+                int last=record.Frames.Count-1;
+                loser=record.Frames[last].ToBoard().TurnBeforeTimeout(record.Frames[last-1].ToBoard());
+            }
+            return TimedOutcome(loser);
         }
         static int? FinalDiscDifference(GameRecord record) {
             var final=record.Frames==null?null:record.Frames.LastOrDefault();
