@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Globalization;
 using System.IO;
 using System.IO.Ports;
 using System.Runtime.CompilerServices;
@@ -105,6 +106,9 @@ namespace Othello.Basic {
         readonly Label scoring=new Label();
         readonly Label clock=new ClockLabel();
         readonly RowStyle clockRow=new RowStyle(SizeType.Absolute,0);
+        readonly Label aiOutlook=new Label(),aiHistory=new Label();
+        readonly RowStyle scoreRow=new RowStyle(SizeType.Absolute,49);
+        readonly RowStyle aiOutlookRow=new RowStyle(SizeType.Absolute,0),aiHistoryRow=new RowStyle(SizeType.Absolute,0);
         readonly Label limitLabel=Label("时长 (s)");
         readonly TextBox log=new TextBox();
         readonly System.Windows.Forms.Timer timer=new System.Windows.Forms.Timer();
@@ -114,10 +118,11 @@ namespace Othello.Basic {
         bool selectingAiLevel;
         int savedSeconds=180,savedLevel=5;
         EgaroucidEngine legacyEngine,requestedLegacyEngine;
-        BoardState modeBeforeRequest,searchPosition,submittedPosition,failedAiPosition;
-        string aiFailure;
+        BoardState modeBeforeRequest,searchPosition,submittedPosition,failedAiPosition,analyzedPosition;
+        string aiFailure,historyWinRates;
+        int? blackDiscDifference;
         CancellationTokenSource searchCancellation;
-        Task<int> search;
+        Task<PositionAnalysis> search;
         public bool Stopped { get { return stopped; } }
         public OthelloPanel() : this(new GameArchive(Path.Combine(Environment.GetFolderPath(
             Environment.SpecialFolder.LocalApplicationData),"Othello.Basic","Games"))) { }
@@ -229,6 +234,8 @@ namespace Othello.Basic {
             Button(disconnect,"断开",delegate { Disconnect(); });
             Button(refresh,"刷新棋盘",delegate { Safe(delegate {
                 failedAiPosition=submittedPosition=null;
+                analyzedPosition=null;
+                historyWinRates=null;
                 session.Refresh();
             }); });
             actions.Controls.Add(connect,0,0);actions.Controls.Add(disconnect,1,0);actions.Controls.Add(refresh,2,0);
@@ -237,6 +244,7 @@ namespace Othello.Basic {
         }
         Control BuildSidebar() {
             var sidebar=Grid(1,31,36,49,52,39,49,44,23,0,44);
+            sidebar.RowStyles[2]=scoreRow;
             sidebar.Padding=new Padding(12,9,12,8);
             sidebar.BackColor=Color.White;
             turn.Dock=DockStyle.Fill;
@@ -251,13 +259,23 @@ namespace Othello.Basic {
             pieces.Controls.Add(blackCount,0,0);pieces.Controls.Add(whiteCount,1,0);
             sidebar.Controls.Add(pieces,0,1);
             scoring.Dock=DockStyle.Fill;
+            scoring.Margin=Padding.Empty;
             scoring.BackColor=Tint;scoring.Padding=new Padding(7,2,6,2);
             scoring.TextAlign=ContentAlignment.MiddleLeft;
             clock.Dock=DockStyle.Fill;clock.BackColor=Tint;clock.ForeColor=Ink;
             clock.Padding=new Padding(7,0,6,0);clock.TextAlign=ContentAlignment.MiddleLeft;
-            var scores=Grid(1,0,0);
+            aiOutlook.Dock=aiHistory.Dock=DockStyle.Fill;
+            aiOutlook.Padding=aiHistory.Padding=new Padding(7,0,6,0);
+            aiOutlook.Margin=aiHistory.Margin=Padding.Empty;
+            aiOutlook.TextAlign=aiHistory.TextAlign=ContentAlignment.MiddleLeft;
+            aiOutlook.BackColor=Tint;aiHistory.BackColor=Cool;
+            aiOutlook.AutoEllipsis=aiHistory.AutoEllipsis=true;
+            aiOutlook.Visible=aiHistory.Visible=false;
+            var scores=Grid(1,0,0,0,0);
             scores.BackColor=Tint;scores.RowStyles[0]=clockRow;
+            scores.RowStyles[2]=aiOutlookRow;scores.RowStyles[3]=aiHistoryRow;
             scores.Controls.Add(clock,0,0);scores.Controls.Add(scoring,0,1);
+            scores.Controls.Add(aiOutlook,0,2);scores.Controls.Add(aiHistory,0,3);
             sidebar.Controls.Add(scores,0,2);
             var settings=Grid(3,19,0);
             settings.ColumnStyles[0].Width=50;
@@ -336,7 +354,8 @@ namespace Othello.Basic {
                 CheckFileExists=true,FileName=ReadEgaroucidPath() }) {
                 if(picker.ShowDialog(this)!=DialogResult.OK) return;
                 File.WriteAllText(EgaroucidEngine.ConfigPath,picker.FileName);
-                failedAiPosition=null;
+                CancelSearch();
+                failedAiPosition=analyzedPosition=null;
                 session.Report("已选择 "+Path.GetFileName(picker.FileName));
             }
         }
@@ -360,6 +379,10 @@ namespace Othello.Basic {
         static bool Casual(BoardState state) {
             return state!=null && state.Match!=null && state.Match.Mode==GameMode.Casual;
         }
+        bool InEgaroucidMode(BoardState state) {
+            return state!=null && state.Match!=null &&
+                (state.Match.Mode==GameMode.ExternalAi || (legacyEngine!=null && Casual(state)));
+        }
         bool EgaroucidTurn(BoardState state) {
             return session.Synchronized && (state.ExternalAiTurn || (legacyEngine!=null && Casual(state) &&
                 state.Match.Phase==GamePhase.Running && state.Status==0 && state.Turn==2));
@@ -382,7 +405,7 @@ namespace Othello.Basic {
         void StopEgaroucid() {
             CancelSearch();
             legacyEngine=requestedLegacyEngine=null;
-            submittedPosition=modeBeforeRequest=failedAiPosition=null;
+            submittedPosition=modeBeforeRequest=failedAiPosition=analyzedPosition=null;
             aiFailure=null;
         }
         void EgaroucidFailed(BoardState state,string reason) {
@@ -402,7 +425,8 @@ namespace Othello.Basic {
             if(!session.Synchronized) { CancelSearch(); return; }
             if(!Casual(state)) legacyEngine=null;
             bool whiteTurn=EgaroucidTurn(state);
-            if(search!=null && (!whiteTurn || !SamePosition(searchPosition,state))) CancelSearch();
+            bool canAnalyze=InEgaroucidMode(state) && state.Status==0 && state.Match.Phase==GamePhase.Running;
+            if(search!=null && (!canAnalyze || !SamePosition(searchPosition,state))) CancelSearch();
             if(submittedPosition!=null) {
                 if(session.Waiting) return;
                 bool unconfirmed=whiteTurn && SamePosition(submittedPosition,state);
@@ -412,19 +436,19 @@ namespace Othello.Basic {
                     return;
                 }
             }
-            if(!whiteTurn || session.Waiting || SamePosition(failedAiPosition,state)) return;
+            if(!canAnalyze || session.Waiting || (whiteTurn?SamePosition(failedAiPosition,state):SamePosition(analyzedPosition,state))) return;
             if(search==null) {
                 try {
-                    var engine=state.ExternalAiTurn?
+                    var engine=state.Match.Mode==GameMode.ExternalAi?
                         new EgaroucidEngine(ReadEgaroucidPath(),selectingAiLevel?(int)limit.Value:savedLevel):legacyEngine;
                     searchPosition=state;
                     searchCancellation=new CancellationTokenSource();
                     var cancellation=searchCancellation.Token;
-                    search=Task.Factory.StartNew(()=>engine.FindWhiteMove(state,cancellation),cancellation,
+                    search=Task.Factory.StartNew(()=>engine.Analyze(state,cancellation),cancellation,
                         TaskCreationOptions.None,TaskScheduler.Default);
                     Render();
                 } catch(Exception error) {
-                    EgaroucidFailed(state,error.Message);
+                    AnalysisFailed(state,whiteTurn,error.Message);
                 }
                 return;
             }
@@ -433,12 +457,24 @@ namespace Othello.Basic {
             searchCancellation.Dispose();
             search=null;searchPosition=null;searchCancellation=null;
             try {
-                int cell=completed.GetAwaiter().GetResult();
-                submittedPosition=state;
-                if(state.ExternalAiTurn) session.EngineMove(cell/8,cell%8);
-                else session.Move(cell/8,cell%8);
+                var result=completed.GetAwaiter().GetResult();
+                analyzedPosition=state;
+                blackDiscDifference=result.BlackDiscDifference;
+                if(whiteTurn) {
+                    submittedPosition=state;
+                    if(state.ExternalAiTurn) session.EngineMove(result.Cell/8,result.Cell%8);
+                    else session.Move(result.Cell/8,result.Cell%8);
+                } else Render();
             } catch(Exception error) {
-                EgaroucidFailed(state,error.Message);
+                AnalysisFailed(state,whiteTurn,error.Message);
+            }
+        }
+        void AnalysisFailed(BoardState state,bool whiteTurn,string reason) {
+            if(whiteTurn) EgaroucidFailed(state,reason);
+            else {
+                analyzedPosition=state;
+                blackDiscDifference=null;
+                Render();
             }
         }
         void Command(GameControl command) {
@@ -488,6 +524,43 @@ namespace Othello.Basic {
             } catch(Exception ex) { connecting=false;session.Report(ex.Message);Render(); }
         }
         void Safe(Action action) { try { action(); } catch(Exception ex) { session.Report(ex.Message); } Render(); }
+        static string Rate(int count,int total) {
+            return ((decimal)count/total).ToString("0.#%",CultureInfo.InvariantCulture);
+        }
+        void RenderAiSummary(BoardState state,bool aiMode) {
+            int height=aiMode?77:49;
+            if(scoreRow.Height!=height) {
+                scoreRow.Height=height;
+                aiOutlookRow.Height=aiMode?21:0;
+                aiHistoryRow.Height=aiMode?36:0;
+                aiOutlook.Visible=aiHistory.Visible=aiMode;
+            }
+            if(!aiMode) { historyWinRates=null;return; }
+            if(historyWinRates==null) {
+                try {
+                    var stats=archive.GetAiMatchStats();
+                    historyWinRates=stats.Total==0?"历史胜率 · 暂无已完成 AI 对局":
+                        "历史胜率 · "+stats.Total+" 局"+Environment.NewLine+
+                        "玩家 "+Rate(stats.BlackWins,stats.Total)+"   AI "+Rate(stats.WhiteWins,stats.Total)+
+                        "   平局 "+Rate(stats.Draws,stats.Total);
+                } catch(IOException) { historyWinRates="历史胜率 · 暂无法读取"; }
+                catch(UnauthorizedAccessException) { historyWinRates="历史胜率 · 暂无法读取"; }
+            }
+            aiHistory.Text=historyWinRates;
+            string outlook;
+            if(!session.Synchronized) outlook="局势 · 等待棋盘同步";
+            else if(state.Status==1) {
+                int difference=state.Black-state.White;
+                outlook=state.Match.Result==GameResult.Exit?"终局 · 未完成":difference==0?"终局 · 平局":
+                    "终局 · "+(difference>0?"黑棋多 ":"白棋多 ")+Math.Abs(difference)+" 子";
+            } else if(SamePosition(analyzedPosition,state)&&blackDiscDifference.HasValue) {
+                int difference=blackDiscDifference.Value;
+                outlook=difference==0?"局势估计 · 均势":"局势估计 · "+(difference>0?"黑方领先 ":"白方领先 ")+Math.Abs(difference)+" 子";
+            } else if(state.Match.Phase!=GamePhase.Running) outlook="局势估计 · 等待继续对局";
+            else if(SamePosition(analyzedPosition,state)||SamePosition(failedAiPosition,state)) outlook="局势估计 · 暂不可用";
+            else outlook="局势估计 · 分析中…";
+            aiOutlook.Text=outlook;
+        }
         static string ClockText(uint milliseconds) {
             uint seconds=(milliseconds+999u)/1000u;
             return (seconds/60).ToString("D2")+":"+(seconds%60).ToString("D2");
@@ -499,9 +572,10 @@ namespace Othello.Basic {
             bool realSerial=mode.SelectedIndex==1;
             BoardState state=session.State;
             MatchState match=state==null?null:state.Match;
+            bool aiMode=InEgaroucidMode(state);
             if(!connected) archive.ResetConnection();
             string archiveError=null;
-            try { archive.Observe(state,mode.SelectedIndex==0); }
+            try { if(archive.Observe(state,mode.SelectedIndex==0,aiMode&&Casual(state))) historyWinRates=null; }
             catch(IOException error) { archiveError=error.Message; }
             catch(UnauthorizedAccessException error) { archiveError=error.Message; }
             mode.Enabled=!connected&&!connecting&&active;
@@ -543,8 +617,7 @@ namespace Othello.Basic {
             string stage=match!=null&&match.Stage!=0 ? " · 第 "+match.Stage+"/4 关 ×"+(match.Stage/2m).ToString("0.#") : "";
             string scoreLabel=stage.Length!=0 ? "本关" : "本局";
             string modeTitle=match==null?"":GameArchive.ModeName(match.Mode);
-            if(match!=null&&(match.Mode==GameMode.ExternalAi||(legacyEngine!=null&&Casual(state))))
-                modeTitle=GameArchive.ModeName(GameMode.ExternalAi)+" · 玩家执黑";
+            if(aiMode) modeTitle=GameArchive.ModeName(GameMode.ExternalAi)+" · 玩家执黑";
             else if(match!=null&&match.Mode==GameMode.Challenge)
                 modeTitle=match.ActiveMode==GameMode.Casual?"闯关结算":state.ComputerOpponent?"闯关（人机）":"闯关";
             bool timed=match!=null&&match.Mode==GameMode.Timed;
@@ -555,9 +628,10 @@ namespace Othello.Basic {
                 "旧固件共用计时 "+ClockText(match.RemainingMs);
             if(clock.Text!=timeText) clock.Text=timeText;
             scoring.Text=match==null?"本局 — 分  总分 — 分":modeTitle+
-                stage+(timed?" · ":Environment.NewLine)+scoreLabel+" "+match.Score.ToString("0.#")+" 分  总分 "+match.TotalScore.ToString("0.#")+" 分"+
+                stage+(timed||aiMode?" · ":Environment.NewLine)+scoreLabel+" "+match.Score.ToString("0.#")+" 分  总分 "+match.TotalScore.ToString("0.#")+" 分"+
                 (match.Mode==GameMode.Challenge?"  连败 "+match.Losses+" 局":"")+
                 (match.Edited?"  已编辑":"");
+            RenderAiSummary(state,aiMode);
             string text=session.LogText;if(log.Text!=text) { log.Text=text;log.SelectionStart=log.TextLength;log.ScrollToCaret(); }
         }
         protected override void Dispose(bool disposing) { if(disposing) { connectionAttempt++;stopped=true;timer.Dispose();StopEgaroucid();session.Dispose(); }base.Dispose(disposing); }

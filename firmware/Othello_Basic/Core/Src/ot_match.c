@@ -91,21 +91,93 @@ static uint8_t apply_move(OtMatch *m, uint8_t row, uint8_t col)
     return 1u;
 }
 
-static uint8_t play_computer_move(OtMatch *m)
+static int corner(uint8_t row, uint8_t col)
+{
+    return (row == 0u || row == 7u) && (col == 0u || col == 7u);
+}
+
+static unsigned greedy_move(const OtGame *game, int prefer_corner)
 {
     OtGame candidate;
     unsigned square, best = 64u, best_white = 0u;
     for (square = 0u; square < 64u; ++square) {
         uint8_t row = (uint8_t)(square / 8u), col = (uint8_t)(square % 8u);
-        if (!ot_legal(&m->game, row, col, OT_WHITE)) continue;
-        if ((row == 0u || row == 7u) && (col == 0u || col == 7u))
-            return apply_move(m, row, col);
-
-        candidate = m->game;
-        (void)ot_move(&candidate, row, col);
+        candidate = *game;
+        if (!ot_move(&candidate, row, col)) continue;
+        if (prefer_corner && corner(row, col)) return square;
         if (candidate.white > best_white) {
             best = square;
             best_white = candidate.white;
+        }
+    }
+    return best;
+}
+
+/* Scores are from White's perspective. A terminal result outweighs positional terms. */
+static int position_value(const OtGame *game)
+{
+    static const unsigned corners[] = {0u, 7u, 56u, 63u};
+    static const unsigned diagonals[] = {9u, 14u, 49u, 54u};
+    unsigned square, i;
+    int discs = (int)game->white - game->black;
+    int score = discs * (game->white + game->black < 48 ? 1 : 3);
+    if (game->status == OT_OVER)
+        return discs > 0 ? 1000 + discs : discs < 0 ? -1000 + discs : 0;
+
+    for (i = 0u; i < 4u; ++i) {
+        uint8_t piece = game->board[corners[i]];
+        if (piece == OT_WHITE) score += 32;
+        else if (piece == OT_BLACK) score -= 32;
+        else if (game->board[diagonals[i]] == OT_WHITE) score -= 12;
+        else if (game->board[diagonals[i]] == OT_BLACK) score += 12;
+    }
+    for (square = 0u; square < 64u; ++square) {
+        uint8_t row = (uint8_t)(square / 8u), col = (uint8_t)(square % 8u);
+        if (game->board[square] != OT_EMPTY) continue;
+        if (ot_legal(game, row, col, OT_WHITE)) score += 4;
+        if (ot_legal(game, row, col, OT_BLACK)) score -= 4;
+    }
+    return score;
+}
+
+enum { SEARCH_BOUND = 2000, SEARCH_NODES = 256 };
+
+static int search_position(const OtGame *game, unsigned plies, int alpha, int beta,
+    unsigned *nodes_left, unsigned *best_move)
+{
+    OtGame candidate;
+    unsigned square;
+    int white = game->turn == OT_WHITE;
+    int best = white ? -SEARCH_BOUND : SEARCH_BOUND;
+    --*nodes_left;
+    if (plies == 0u || game->status == OT_OVER) return position_value(game);
+
+    for (square = 0u; square < 64u && *nodes_left != 0u; ++square) {
+        int score;
+        candidate = *game;
+        if (!ot_move(&candidate, (uint8_t)(square / 8u), (uint8_t)(square % 8u))) continue;
+        score = search_position(&candidate, plies - 1u, alpha, beta, nodes_left, NULL);
+        if (white ? score > best : score < best) {
+            best = score;
+            if (best_move != NULL) *best_move = square;
+        }
+        if (white && best > alpha) alpha = best;
+        if (!white && best < beta) beta = best;
+        if (alpha >= beta) break;
+    }
+    return best;
+}
+
+static uint8_t play_computer_move(OtMatch *m)
+{
+    unsigned best = greedy_move(&m->game, m->stage >= 2u);
+    if (best < 64u && m->stage >= 3u) {
+        unsigned depth, nodes_left = SEARCH_NODES;
+        /* Keep the last completed search if the next depth exhausts the budget. */
+        for (depth = 1u; depth < m->stage && nodes_left != 0u; ++depth) {
+            unsigned move = best;
+            (void)search_position(&m->game, depth, -SEARCH_BOUND, SEARCH_BOUND, &nodes_left, &move);
+            if (nodes_left != 0u) best = move;
         }
     }
     if (best < 64u) return apply_move(m, (uint8_t)(best / 8u), (uint8_t)(best % 8u));

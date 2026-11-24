@@ -240,8 +240,11 @@ class BasicTests {
         try {
             foreach(var encoding in new Encoding[]{Encoding.GetEncoding(936),new UTF8Encoding(true)}) {
                 Console.InputEncoding=encoding;
-                int cell=new EgaroucidEngine(enginePath,5).FindWhiteMove(board,CancellationToken.None);
+                var engine=new EgaroucidEngine(enginePath,5);
+                var analysis=engine.Analyze(board,CancellationToken.None);
+                int cell=analysis.Cell;
                 Check(cell==18||cell==20||cell==34,"real EN returns a legal white move with input code page "+encoding.CodePage);
+                Check(analysis.BlackDiscDifference.HasValue,"real EN returns a disc-difference score with the legal white move");
             }
         } finally {
             Console.InputEncoding=original;
@@ -283,6 +286,11 @@ class BasicTests {
                 WaitForPanel(()=>board.Board.Match.Mode==GameMode.ExternalAi &&
                     FindControl<Label>(panel,l=>l.Text.Contains("AI 对弈 · 玩家执黑"))!=null,
                     "the single menu entry starts EN on the authoritative game");
+                WaitForPanel(()=>FindControl<Label>(panel,l=>l.Text.StartsWith("局势估计 · ")&&
+                    (l.Text.EndsWith("子")||l.Text.EndsWith("均势")))!=null && move.Enabled,
+                    "live black-turn evaluation is displayed without taking the player's turn",12000);
+                Check(board.Board.Cells==InitialBoard() && FindControl<Label>(panel,l=>l.Text.Contains("暂无已完成 AI 对局"))!=null,
+                    "analysis leaves the opening untouched and empty history displays no sample");
                 move.PerformClick();
                 WaitForPanel(()=>board.Board.ExternalAiTurn && !move.Enabled,"white belongs to Egaroucid");
                 WaitForUi(160);
@@ -328,6 +336,9 @@ class BasicTests {
                     "terminal board has one new piece per confirmed move and stays locked");
                 string outcome=GameArchive.Outcome(board.Board.Black,board.Board.White,true);
                 Check(FindControl<Label>(panel,l=>l.Text==outcome)!=null,"live terminal panel displays the board outcome");
+                Check(FindControl<Label>(panel,l=>l.Text.StartsWith("终局 · "))!=null &&
+                    FindControl<Label>(panel,l=>l.Text.StartsWith("历史胜率 · 1 局") && l.Text.Contains("100%"))!=null,
+                    "terminal board replaces analysis and updates history exactly once");
                 Console.WriteLine("Egaroucid offline match: "+fullGameMoves+" moves, black "+board.Board.Black+", white "+board.Board.White);
 
                 start.PerformClick();
@@ -339,7 +350,9 @@ class BasicTests {
                 WaitForPanel(()=>board.Board!=null && board.Board.Cells==InitialBoard() && move.Enabled,
                     "reconnect has an independent fresh manual game");
                 WaitForUi(850);
-                Check(board.Board.Cells==InitialBoard() && board.Board.Turn==1,"no stale AI result reaches the new connection");
+                Check(board.Board.Cells==InitialBoard() && board.Board.Turn==1 &&
+                    FindControl<Label>(panel,l=>l.Visible && l.Text.StartsWith("历史胜率 · "))==null,
+                    "no stale AI result or statistics reach the new manual connection");
             }
             CheckPhysicalEgaroucid(enginePath,archive);
         } finally {
@@ -480,6 +493,24 @@ class BasicTests {
         record.Result=GameResult.Board;
         frame.Status=0;
         Check(GameArchive.Outcome(record)=="未完成","a replay without a terminal frame has no outcome");
+    }
+
+    static GameRecord AiRecord(int black,int white,GameResult result=GameResult.Board) {
+        return new GameRecord { Mode=GameMode.ExternalAi,Result=result,Frames={new ReplayFrame {
+            Status=1,Cells=new string('1',black)+new string('2',white)+new string('0',64-black-white)
+        }}};
+    }
+
+    static void CheckAiHistory() {
+        Check(GameArchive.CountAiMatches(new GameRecord[0]).Total==0,"empty AI history has no denominator");
+        var edited=AiRecord(39,25);edited.Edited=true;
+        var casual=AiRecord(41,23);casual.Mode=GameMode.Casual;
+        var unfinished=AiRecord(39,25);unfinished.Frames[0].Status=0;
+        var records=new[]{AiRecord(39,25),AiRecord(37,27),AiRecord(20,44),AiRecord(30,30),
+            edited,casual,unfinished,AiRecord(39,25,GameResult.Exit)};
+        var stats=GameArchive.CountAiMatches(records);
+        Check(stats.BlackWins==2 && stats.WhiteWins==1 && stats.Draws==1 && stats.Total==4,
+            "AI history uses the same sample for black wins, white wins and draws and excludes edited and unfinished games");
     }
 
     static void CheckArchive() {
@@ -648,6 +679,7 @@ class BasicTests {
             CheckAdvanced();
             CheckClockPanel();
             CheckOutcomes();
+            CheckAiHistory();
             CheckArchive();
             Console.WriteLine("PASS "+checks+" checks: framing, modes, editor, timers, replay, ranking, reconnect, panel actions");
             return 0;

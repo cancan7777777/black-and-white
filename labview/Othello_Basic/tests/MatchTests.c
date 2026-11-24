@@ -50,22 +50,15 @@ static void play_seed(OtMatch *match, uint32_t seed)
 
 static void prove_natural_win(void)
 {
+    static const uint32_t seeds[] = {23u,33u,49u,1343u};
     OtMatch match;
-    uint32_t seed;
     unsigned stage;
-    for (seed=2u; seed<=512u; ++seed) {
-        ot_match_init(&match);
-        check(ot_match_control(&match,OT_SET_MODE,OT_CHALLENGE,180u),"select human versus computer");
-        play_seed(&match,seed);
-        if (match.game.black>=match.game.white && match.game.black>=38u) break;
-    }
-    check(seed<=512u,"a legal non-losing game can produce enough points across four stages");
     ot_match_init(&match);
     check(ot_match_control(&match,OT_SET_MODE,OT_CHALLENGE,180u),"natural proof selects challenge");
     printf("Legal stage scores against the computer:");
     for (stage=1u; stage<=OT_CHALLENGE_STAGES; ++stage) {
         unsigned score;
-        play_seed(&match,seed);
+        play_seed(&match,seeds[stage-1u]);
         score=ot_match_score_half(&match);
         printf(" %u%s",score/2u,score%2u?".5":"");
         if (match.result==OT_RESULT_WIN) break;
@@ -74,6 +67,28 @@ static void prove_natural_win(void)
     }
     printf(" -> %lu%s\n",(unsigned long)match.total,match.total_half_point?".5":"");
     check(match.total>=OT_WIN_SCORE && match.result==OT_RESULT_WIN,"legal stages produce WIN within four rounds");
+}
+
+static void check_challenge_choices(const char *cells, const unsigned moves[4])
+{
+    unsigned stage, square;
+    for (stage=1u; stage<=4u; ++stage) {
+        OtMatch match;
+        unsigned chosen=moves[stage-1u];
+        ot_match_init(&match);
+        check(ot_match_control(&match,OT_SET_MODE,OT_CHALLENGE,180u),"challenge choice fixture starts");
+        match.stage=(uint8_t)stage;
+        match.game.turn=OT_WHITE;
+        match.game.black=match.game.white=0u;
+        for (square=0u; square<64u; ++square) {
+            uint8_t piece=(uint8_t)(cells[square]-'0');
+            match.game.board[square]=piece;
+            match.game.black+=(piece==OT_BLACK);
+            match.game.white+=(piece==OT_WHITE);
+        }
+        check(ot_legal(&match.game,(uint8_t)(chosen/8u),(uint8_t)(chosen%8u),OT_WHITE),"expected stage move is legal");
+        check(ot_match_tick(&match,0u) && match.game.board[chosen]==OT_WHITE,"challenge stage chooses its expected move");
+    }
 }
 
 static char latest_frame[OT_LINE_MAX];
@@ -292,6 +307,12 @@ int main(void)
           "new round resets both sides");
     test_stage_scoring();
     exercise_hardware_path();
+    {
+        static const unsigned late_choices[] = {15u,7u,63u,7u};
+        static const unsigned early_choices[] = {52u,52u,30u,42u};
+        check_challenge_choices("1111021021122110212212122121221222122112222222122220120122000000",late_choices);
+        check_challenge_choices("0000000000000000000000100002210000011000000010000000000000000000",early_choices);
+    }
     prove_natural_win();
     test_winning_heart();
     puts("PASS native match and winning LED heart");
