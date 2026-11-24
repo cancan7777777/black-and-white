@@ -9,7 +9,7 @@ typedef struct {
 
 void AppPlatform_Init(void);
 void AppPlatform_Tick(uint32_t now_ms);
-char AppPlatform_TakeKey(void);
+uint8_t AppPlatform_TakeKey(void);
 uint8_t AppPlatform_ReadFrame(char *out, size_t capacity);
 uint8_t AppPlatform_CanSend(void *context);
 uint8_t AppPlatform_Send(const char *frame, size_t length, void *context);

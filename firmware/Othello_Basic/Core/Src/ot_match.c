@@ -72,6 +72,20 @@ static void finish(OtMatch *m, OtResult reason)
     else if (m->losses == 2u || m->stage == OT_CHALLENGE_STAGES) m->result = OT_RESULT_OVER;
 }
 
+void ot_match_set_standby(OtMatch *m, uint8_t standby)
+{
+    if (m->standby == standby) return;
+    m->standby = standby;
+    if (standby) {
+        if (m->phase != OT_FINISHED) finish(m, OT_RESULT_EXIT);
+        m->game.revision = next_revision(m->game.revision);
+    } else {
+        m->mode = OT_CASUAL;
+        clear_scores(m);
+        new_round(m);
+    }
+}
+
 uint8_t ot_match_computer_turn(const OtMatch *m)
 {
     return (uint8_t)(m->mode == OT_CHALLENGE && m->phase == OT_RUNNING && m->game.turn == OT_WHITE);
@@ -227,6 +241,7 @@ uint8_t ot_match_ai_move(OtMatch *m, uint8_t row, uint8_t col)
 
 uint8_t ot_match_control(OtMatch *m, OtControl action, uint32_t value, uint32_t seconds)
 {
+    if (m->standby) return 0u;
     switch (action) {
     case OT_START:
     case OT_RESTART:

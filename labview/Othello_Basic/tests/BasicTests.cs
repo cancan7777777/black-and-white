@@ -199,36 +199,38 @@ class BasicTests {
             var move=FindControl<Button>(panel,b=>b.Text=="确认落子");
             var refresh=FindControl<Button>(panel,b=>b.Text=="刷新棋盘");
             var board=FindControl<BoardView>(panel,b=>true);
-            WaitForPanel(()=>serial.Last!=null && serial.Last.StartsWith("@SYNC6,1,"),"serial panel requests the current firmware protocol");
+            WaitForPanel(()=>serial.Last!=null && serial.Last.StartsWith("@SYNC7,1,"),"serial panel requests the current firmware protocol");
             serial.Inject(Protocol.Frame("@ERROR,1,COMMAND"));
-            WaitForPanel(()=>serial.Last.StartsWith("@SYNC5,2,"),"serial panel can fall back to the previous AI protocol");
-            serial.Inject(ExternalState(2,model.State));
+            WaitForPanel(()=>serial.Last.StartsWith("@SYNC6,2,"),"serial panel falls back to the clock protocol");
+            serial.Inject(Protocol.Frame("@ERROR,2,COMMAND"));
+            WaitForPanel(()=>serial.Last.StartsWith("@SYNC5,3,"),"serial panel can fall back to the previous AI protocol");
+            serial.Inject(ExternalState(3,model.State));
             WaitForPanel(()=>board.Board!=null && move.Enabled,"serial panel confirms the ordinary boot board");
 
             File.WriteAllText(EgaroucidEngine.ConfigPath,Path.Combine(Path.GetTempPath(),Guid.NewGuid().ToString("N")+".exe"));
             model.Control(GameControl.Mode,GameMode.ExternalAi,180);
             serial.Inject(ExternalState(0,model.State));
-            WaitForPanel(()=>board.Board.Match.Mode==GameMode.ExternalAi,"S15 mode broadcast enters the same AI mode");
+            WaitForPanel(()=>board.Board.Match.Mode==GameMode.ExternalAi,"S1 mode broadcast enters the same AI mode");
             model.Move(2,3);
             serial.Inject(ExternalState(0,model.State));
             WaitForPanel(()=>board.Board.ExternalAiTurn && !move.Enabled &&
                 FindControl<Label>(panel,l=>l.Text.Contains("EN 未落子"))!=null,"without EN the physical white turn stays reserved");
-            Check(serial.Last.StartsWith("@SYNC5,2,") && board.Board.Revision==3,"missing engine sends no fallback move");
+            Check(serial.Last.StartsWith("@SYNC5,3,") && board.Board.Revision==3,"missing engine sends no fallback move");
 
             File.WriteAllText(EgaroucidEngine.ConfigPath,enginePath);
             refresh.PerformClick();
-            serial.Inject(ExternalState(3,model.State));
-            WaitForPanel(()=>serial.Last.StartsWith("@AI,4,3,"),"real EN returns a versioned white move after S15",12000);
+            serial.Inject(ExternalState(4,model.State));
+            WaitForPanel(()=>serial.Last.StartsWith("@AI,5,3,"),"real EN returns a versioned white move after S1",12000);
             string[] command=Protocol.Fields(serial.Last);
             uint before=model.State.Revision;
             model.EngineMove((int)Protocol.Number(command[3]),(int)Protocol.Number(command[4]));
             Check(model.State.Revision!=before && model.State.Turn==1,"the real device state machine accepts the EN move");
-            serial.Inject(ExternalState(4,model.State));
+            serial.Inject(ExternalState(5,model.State));
             WaitForPanel(()=>board.Board.Turn==1 && board.Board.Black==3 && board.Board.White==3 && move.Enabled,
                 "the verified reply returns control to black");
             model.Control(GameControl.Mode,GameMode.Casual,180);
             serial.Inject(ExternalState(0,model.State));
-            WaitForPanel(()=>board.Board.Match.Mode==GameMode.Casual && move.Enabled,"S15 exit restores ordinary play");
+            WaitForPanel(()=>board.Board.Match.Mode==GameMode.Casual && move.Enabled,"S1 exit restores ordinary play");
         }
     }
 
@@ -365,19 +367,51 @@ class BasicTests {
         }
     }
 
+    static void CheckStandbyPanel() {
+        var serial=new FakeTransport();
+        string folder=Path.Combine(Path.GetTempPath(),"Othello-Standby-"+Guid.NewGuid().ToString("N"));
+        try {
+            using(var panel=new OthelloPanel(new GameArchive(folder),settings=>serial)) {
+                panel.CreateControl();panel.Start();
+                FindControl<ComboBox>(panel,c=>c.Items.Contains("真实串口")).SelectedItem="真实串口";
+                FindControl<ComboBox>(panel,c=>c.DropDownStyle==ComboBoxStyle.DropDown).Text="COM37";
+                FindControl<Button>(panel,b=>b.Text=="连接").PerformClick();
+                var move=FindControl<Button>(panel,b=>b.Text=="确认落子");
+                var start=FindControl<Button>(panel,b=>b.Text=="开始");
+                var apply=FindControl<Button>(panel,b=>b.Text=="设定模式");
+                var board=FindControl<BoardView>(panel,b=>true);
+                WaitForPanel(()=>serial.Last!=null && serial.Last.StartsWith("@SYNC7,1,"),"the panel requests standby-aware synchronization");
+                serial.Inject(Protocol.Frame("@GAME7,1,2,0,1,0,0,"+new string('0',64)+",0,3,1,0,0,0,0,0,3,180,0,0,0,0,0,1"));
+                WaitForPanel(()=>board.Board!=null && board.Board.Standby && !move.Enabled && !start.Enabled && !apply.Enabled,
+                    "the host confirms standby and disables game controls");
+                Check(FindControl<Label>(panel,l=>l.Text=="待机 · 按实体 S4 开局")!=null,"the host displays the hardware switch instruction");
+                serial.Inject(Protocol.Frame("@GAME7,0,3,1,0,2,2,"+InitialBoard()+",0,0,2,0,0,0,0,0,0,180,0,4,0,0,0,0"));
+                WaitForPanel(()=>!board.Board.Standby && board.Board.Cells==InitialBoard() && move.Enabled && apply.Enabled,
+                    "the S4 opening broadcast unlocks the host controls and shows the starting pieces");
+                serial.Inject(Protocol.Frame("@GAME7,0,4,0,1,2,2,"+InitialBoard()+",0,3,2,0,0,0,0,0,3,180,0,0,0,0,0,1"));
+                WaitForPanel(()=>board.Board.Standby && !move.Enabled && !start.Enabled,"an S4 shutdown returns the host to standby");
+            }
+        } finally {
+            if(Directory.Exists(folder)) {
+                foreach(string file in Directory.GetFiles(folder)) File.Delete(file);
+                Directory.Delete(folder);
+            }
+        }
+    }
+
     static void CheckAdvanced() {
         using(var host=new HostSession()) {
             var legacy=new FakeTransport();
             host.Connect(legacy);
-            var probes=new[]{"@SYNC6","@SYNC5","@SYNC4","@SYNC3","@SYNC2","@SYNC","@GET"};
+            var probes=new[]{"@SYNC7","@SYNC6","@SYNC5","@SYNC4","@SYNC3","@SYNC2","@SYNC","@GET"};
             for(int i=0;i<probes.Length;i++) {
                 int sequence=i+1;
                 Check(legacy.Last.StartsWith(probes[i]+","+sequence+","),"negotiation tries "+probes[i]);
                 if(i<probes.Length-1) legacy.Inject(Protocol.Frame("@ERROR,"+sequence+",COMMAND"));
             }
-            legacy.Inject(State(7,1,InitialBoard(),1,0,2,2));
+            legacy.Inject(State(8,1,InitialBoard(),1,0,2,2));
             host.Move(2,3);
-            Check(legacy.Last.StartsWith("@MOVE,8,"),"legacy host move format preserved");
+            Check(legacy.Last.StartsWith("@MOVE,9,"),"legacy host move format preserved");
         }
         using(var host=new HostSession()) {
             host.Connect(new SimulatedTransport());
@@ -422,7 +456,7 @@ class BasicTests {
             FindControl<ComboBox>(panel,c=>c.Items.Contains("真实串口")).SelectedItem="真实串口";
             FindControl<ComboBox>(panel,c=>c.DropDownStyle==ComboBoxStyle.DropDown).Text="COM37";
             FindControl<Button>(panel,b=>b.Text=="连接").PerformClick();
-            WaitForPanel(()=>serial.Last!=null&&serial.Last.StartsWith("@SYNC6,1,"),"clock panel requests split-clock frames");
+            WaitForPanel(()=>serial.Last!=null&&serial.Last.StartsWith("@SYNC7,1,"),"clock panel requests the newest split-clock format");
             string fields=",2,1,0,2,2,"+InitialBoard()+",2,0,2,0,0,";
             const string scores=",0,0,0,180,0,4,0,";
             serial.Inject(Protocol.Frame("@GAME6,1"+fields+"178800"+scores+"178800,180000"));
@@ -675,6 +709,7 @@ class BasicTests {
             }
             CheckPanel();
             CheckSerialPanel();
+            CheckStandbyPanel();
             CheckShadowCopy();
             CheckAdvanced();
             CheckClockPanel();

@@ -49,7 +49,7 @@ namespace Othello.Basic {
                 }); };
                 State=null;
                 computerSupported=stagesSupported=keyboardAiSupported=externalAiSupported=false;
-                needsSync=true; syncCommand="@SYNC6";
+                needsSync=true; syncCommand="@SYNC7";
                 nextPoll=DateTime.UtcNow; lines.Clear();
                 Report("已连接，正在读取完整棋盘"); Refresh();
             } catch { device.Dispose(); transport=null; throw; }
@@ -133,7 +133,7 @@ namespace Othello.Basic {
         void OnLine(string line) {
             try {
                 string[] fields=Protocol.Fields(line);
-                if(fields[0]=="@GAME6" || fields[0]=="@GAME5" || fields[0]=="@GAME4" || fields[0]=="@GAME3" || fields[0]=="@GAME2" ||
+                if(fields[0]=="@GAME7" || fields[0]=="@GAME6" || fields[0]=="@GAME5" || fields[0]=="@GAME4" || fields[0]=="@GAME3" || fields[0]=="@GAME2" ||
                     fields[0]=="@GAME" || fields[0]=="@STATE") {
                     BoardState state=Protocol.ParseState(fields);
                     if(state.Sequence!=0 && state.Sequence==supersededPoll) return;
@@ -148,7 +148,7 @@ namespace Othello.Basic {
                         return;
                     }
                     if(state.Match==null && State!=null && State.Match!=null) return;
-                    if(fields[0]=="@GAME6" || fields[0]=="@GAME5") externalAiSupported=stagesSupported=computerSupported=true;
+                    if(fields[0]=="@GAME7" || fields[0]=="@GAME6" || fields[0]=="@GAME5") externalAiSupported=stagesSupported=computerSupported=true;
                     if(fields[0]=="@GAME4" && !externalAiSupported) keyboardAiSupported=stagesSupported=computerSupported=true;
                     if(fields[0]=="@GAME3") stagesSupported=computerSupported=true;
                     if(fields[0]=="@GAME2") computerSupported=true;
@@ -157,7 +157,7 @@ namespace Othello.Basic {
                     State=state;
                     needsSync=false;
                     if(state.Sequence!=0 && state.Sequence==pending) {
-                        if(requestedRefresh) syncCommand=fields[0]=="@GAME6"?"@SYNC6":externalAiSupported?"@SYNC5":keyboardAiSupported?"@SYNC4":stagesSupported?"@SYNC3":
+                        if(requestedRefresh) syncCommand=fields[0]=="@GAME7"?"@SYNC7":fields[0]=="@GAME6"?"@SYNC6":externalAiSupported?"@SYNC5":keyboardAiSupported?"@SYNC4":stagesSupported?"@SYNC3":
                             computerSupported?"@SYNC2":state.Match!=null?"@SYNC":"@GET";
                         pending=0;
                     }
@@ -172,7 +172,7 @@ namespace Othello.Basic {
                     if(seq==0 && pending!=0) { Report("下位机报告无序号错误："+reason); return; }
                     if(seq!=0 && pendingKind!=RequestKind.Command && reason=="COMMAND" && syncCommand!="@GET") {
                         pending=0;
-                        syncCommand=syncCommand=="@SYNC6"?"@SYNC5":syncCommand=="@SYNC5"?"@SYNC4":syncCommand=="@SYNC4"?"@SYNC3":syncCommand=="@SYNC3"?"@SYNC2":
+                        syncCommand=syncCommand=="@SYNC7"?"@SYNC6":syncCommand=="@SYNC6"?"@SYNC5":syncCommand=="@SYNC5"?"@SYNC4":syncCommand=="@SYNC4"?"@SYNC3":syncCommand=="@SYNC3"?"@SYNC2":
                             syncCommand=="@SYNC2"?"@SYNC":"@GET";
                         Refresh();
                         return;
@@ -180,7 +180,7 @@ namespace Othello.Basic {
                     pending=0;
                     if(reason=="STALE") needsSync=true;
                     Report(reason=="ILLEGAL"?"非法落子：必须至少翻转对方 1 枚棋子":reason=="STALE"?"版本已过期，正在刷新棋盘":
-                        reason=="COMPUTER_TURN"?"请等待电脑走白":"下位机错误："+reason);
+                        reason=="COMPUTER_TURN"?"请等待电脑走白":reason=="STANDBY"?"点阵待机，请按实体 S4 开局":"下位机错误："+reason);
                     if(reason=="STALE") Refresh();
                 } else {
                     AddLog("RX "+line.TrimEnd());
@@ -192,6 +192,7 @@ namespace Othello.Basic {
             }
         }
         static string Describe(BoardState state) {
+            if(state.Standby) return "点阵待机，请按实体 S4 开局";
             if(state.Match!=null) {
                 string challengeExit=state.Match.ActiveMode==GameMode.Casual?"，闯关已退出":"";
                 switch(state.Match.Result) {

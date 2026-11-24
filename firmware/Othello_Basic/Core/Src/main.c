@@ -112,7 +112,7 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
     uint32_t now = HAL_GetTick();
-    char key;
+    uint8_t key;
 
     /* Settle the timer before accepting any command at the time limit. */
     AppPlatform_Tick(now);

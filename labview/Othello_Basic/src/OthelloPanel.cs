@@ -380,7 +380,7 @@ namespace Othello.Basic {
             return state!=null && state.Match!=null && state.Match.Mode==GameMode.Casual;
         }
         bool InEgaroucidMode(BoardState state) {
-            return state!=null && state.Match!=null &&
+            return state!=null && !state.Standby && state.Match!=null &&
                 (state.Match.Mode==GameMode.ExternalAi || (legacyEngine!=null && Casual(state)));
         }
         bool EgaroucidTurn(BoardState state) {
@@ -585,7 +585,7 @@ namespace Othello.Basic {
             move.Enabled=active&&synced&&!session.Waiting&&state.Status==0&&!state.ComputerTurn&&!egaroucidTurn&&
                 (match==null||match.Phase==GamePhase.Running);
             finish.Enabled=active;history.Enabled=active;aiSettings.Enabled=active;
-            bool ready=active&&synced&&!session.Waiting&&match!=null;
+            bool ready=active&&synced&&!session.Waiting&&match!=null&&!state.Standby;
             startGame.Enabled=ready&&match.Phase==GamePhase.Finished;
             pauseGame.Enabled=ready&&match.Phase==GamePhase.Running;
             resumeGame.Enabled=ready&&match.Phase==GamePhase.Paused;
@@ -606,6 +606,7 @@ namespace Othello.Basic {
             status.BackColor=connected&&!synced?Warm:Tint;
             status.ForeColor=connected&&!synced?Color.FromArgb(103,54,16):Muted;
             turn.Text=state==null?"当前回合：—":!synced?"等待棋盘同步":
+                state.Standby?"待机 · 按实体 S4 开局":
                 state.Status==1?GameArchive.Outcome(state.Black,state.White,match==null||match.Result!=GameResult.Exit):
                 match!=null&&match.Phase==GamePhase.Paused?"对局已暂停":
                 match!=null&&match.Phase==GamePhase.Editing?"棋盘编辑":

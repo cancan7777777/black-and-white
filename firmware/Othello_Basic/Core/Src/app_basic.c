@@ -18,6 +18,7 @@ void AppBasic_GetSnapshot(AppBasicSnapshot *out)
     out->game = app.match.game;
     out->cursor_row = app.row;
     out->cursor_col = app.col;
+    out->standby = app.match.standby;
     out->result = app.match.result;
 }
 
@@ -39,6 +40,9 @@ void AppBasic_Init(const AppBasicPorts *ports)
     memset(&app, 0, sizeof(app));
     if (ports) app.ports = *ports;
     ot_match_init(&app.match);
+    ot_match_set_standby(&app.match, 1u);
+    memset(app.match.game.board, 0, sizeof(app.match.game.board));
+    app.match.game.black = app.match.game.white = 0u;
     app.row = 2u;
     app.col = 3u;
     app.dirty = app.broadcast = app.blink = 1u;
@@ -83,18 +87,19 @@ static void toggle_mode(OtMode mode)
     (void)ot_match_control(&app.match, OT_SET_MODE, next, app.match.limit_seconds);
 }
 
-void AppBasic_HandleKey(char key)
+void AppBasic_HandleKey(uint8_t key)
 {
     uint8_t old_row = app.row, old_col = app.col;
     uint32_t revision = app.match.game.revision;
     uint32_t round = app.match.round;
-    if (app.notifying) return;
+    if (app.notifying || (app.match.standby && key != 4u)) return;
     switch (key) {
-    case '2': if (app.row) --app.row; break;
-    case '8': if (app.row < 7u) ++app.row; break;
-    case '4': if (app.col) --app.col; break;
-    case '6': if (app.col < 7u) ++app.col; break;
-    case '5':
+    case 4u: ot_match_set_standby(&app.match, (uint8_t)!app.match.standby); break;
+    case 10u: if (app.row) --app.row; break;
+    case 12u: if (app.row < 7u) ++app.row; break;
+    case 15u: if (app.col) --app.col; break;
+    case 7u: if (app.col < 7u) ++app.col; break;
+    case 11u:
         if (app.match.phase == OT_EDITING) {
             uint8_t current = app.match.game.board[8u * app.row + app.col];
             (void)ot_match_edit(&app.match, app.row, app.col, (uint8_t)((current + 1u) % 3u));
@@ -103,16 +108,16 @@ void AppBasic_HandleKey(char key)
             return;
         }
         break;
-    case 'A': (void)ot_match_control(&app.match, OT_START, 0u, 0u); break;
-    case 'B':
+    case 6u: (void)ot_match_control(&app.match, OT_START, 0u, 0u); break;
+    case 8u:
         (void)ot_match_control(&app.match, app.match.phase == OT_PAUSED ? OT_RESUME : OT_PAUSE, 0u, 0u);
         break;
-    case 'C': (void)ot_match_control(&app.match, OT_END, 0u, 0u); break;
-    case 'D': toggle_mode(OT_CHALLENGE); break;
-    case '#': toggle_mode(OT_EXTERNAL_AI); break;
-    case '9': toggle_mode(OT_TIMED); break;
-    case '0': (void)ot_match_control(&app.match, OT_RESTART, 0u, 0u); break;
-    case '*': (void)ot_match_control(&app.match, OT_TOGGLE_EDIT, 0u, 0u); break;
+    case 3u: (void)ot_match_control(&app.match, OT_END, 0u, 0u); break;
+    case 16u: toggle_mode(OT_CHALLENGE); break;
+    case 1u: toggle_mode(OT_EXTERNAL_AI); break;
+    case 9u: toggle_mode(OT_TIMED); break;
+    case 14u: (void)ot_match_control(&app.match, OT_RESTART, 0u, 0u); break;
+    case 13u: (void)ot_match_control(&app.match, OT_TOGGLE_EDIT, 0u, 0u); break;
     default: break;
     }
     if (app.match.game.revision != revision) {
@@ -120,7 +125,10 @@ void AppBasic_HandleKey(char key)
         app.dirty = app.broadcast = 1u;
         notify(app.match.round != round ? APP_SOURCE_RESET : APP_SOURCE_KEYPAD);
     }
-    if (old_row != app.row || old_col != app.col) app.dirty = 1u;
+    if (old_row != app.row || old_col != app.col || round != app.match.round) {
+        app.blink = app.dirty = 1u;
+        app.blink_at = app.match.clock_ms;
+    }
 }
 
 uint8_t AppBasic_ProcessFrame(const char *frame)
@@ -152,7 +160,7 @@ void AppBasic_Tick(uint32_t now)
         app.dirty = app.broadcast = 1u;
         notify(APP_SOURCE_EXTENSION);
     }
-    if ((uint32_t)(now - app.blink_at) >= 300u) {
+    if (app.match.phase != OT_FINISHED && (uint32_t)(now - app.blink_at) >= 300u) {
         app.blink_at = now;
         app.blink ^= 1u;
         app.dirty = 1u;

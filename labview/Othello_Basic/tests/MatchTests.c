@@ -1,6 +1,8 @@
 #include "ot_match.h"
 #include "app_basic.h"
 #include "app_led_heart.h"
+#include "app_led_display.h"
+#include "app_keypad.h"
 #include "ot_protocol.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -123,6 +125,78 @@ static unsigned reported_mode(void)
     return (unsigned)strtoul(field, NULL, 10);
 }
 
+static void exercise_standby(void)
+{
+    AppBasicSnapshot snapshot;
+    AppBasicPorts ports = { always_ready, capture_frame, NULL, NULL };
+    AppBasic_Init(&ports);
+    AppBasic_Tick(0u);
+    AppBasic_HandleKey(11u);
+    AppBasic_HandleKey(16u);
+    AppBasic_GetSnapshot(&snapshot);
+    check(snapshot.standby && snapshot.game.black == 0u && snapshot.game.white == 0u &&
+        snapshot.game.revision == 2u, "power-on waits for S4 without an opening board or a mode change");
+    send_command("@SYNC7,1");
+    check(!strncmp(latest_frame,"@GAME7,1,2,0,1,0,0,",19u) &&
+        strstr(latest_frame,",180,0,0,0,0,0,1,")!=NULL,"SYNC7 reports a paused display in standby");
+    send_command("@CTL,2,2,START,0,0");
+    check(strstr(latest_frame,",STANDBY,")!=NULL,"the host cannot start without the hardware switch");
+    send_command("@PLAY,3,2,2,3");
+    check(strstr(latest_frame,",STANDBY,")!=NULL,"a serial move cannot leave standby");
+    AppBasic_HandleKey(app_keypad_button(3u));
+    AppBasic_HandleKey(app_keypad_button(14u));
+    AppBasic_GetSnapshot(&snapshot);
+    check(!snapshot.standby && snapshot.game.black == 2u && snapshot.game.white == 2u &&
+        snapshot.cursor_row == 1u && snapshot.cursor_col == 3u,"S4 opens the game and S10 moves up");
+    AppBasic_HandleKey(app_keypad_button(11u));
+    AppBasic_GetSnapshot(&snapshot);
+    check(snapshot.cursor_row == 1u && snapshot.cursor_col == 2u,"S15 moves left");
+    AppBasic_HandleKey(app_keypad_button(6u));
+    AppBasic_GetSnapshot(&snapshot);
+    check(snapshot.cursor_row == 2u && snapshot.cursor_col == 2u,"S12 moves down");
+    AppBasic_HandleKey(app_keypad_button(9u));
+    AppBasic_GetSnapshot(&snapshot);
+    check(snapshot.cursor_row == 2u && snapshot.cursor_col == 3u,"S7 moves right");
+    AppBasic_HandleKey(app_keypad_button(10u));
+    AppBasic_GetSnapshot(&snapshot);
+    check(snapshot.game.board[19] == OT_BLACK && snapshot.game.turn == OT_WHITE,"S11 confirms D3 and changes turn");
+    AppBasic_HandleKey(4u);
+    AppBasic_GetSnapshot(&snapshot);
+    check(snapshot.standby && snapshot.result == OT_RESULT_EXIT && snapshot.game.black == 4u,
+        "S4 closes the unfinished round and preserves its final snapshot for the host");
+    AppBasic_HandleKey(4u);
+    AppBasic_GetSnapshot(&snapshot);
+    check(!snapshot.standby && snapshot.result == OT_RESULT_NONE && snapshot.game.black == 2u &&
+        snapshot.game.white == 2u && snapshot.game.turn == OT_BLACK,"S4 opens a fresh board after standby");
+
+    check(app_led_board_pixel(OT_EMPTY,1u,OT_BLACK)==0x0E3800u &&
+        app_led_board_pixel(OT_EMPTY,1u,OT_WHITE)==0x380038u &&
+        app_led_board_pixel(OT_BLACK,0u,OT_WHITE)==0x0C3000u &&
+        app_led_board_pixel(OT_WHITE,0u,OT_BLACK)==0x300030u &&
+        app_led_board_pixel(OT_EMPTY,0u,OT_WHITE)==0u,
+        "empty-square previews blink in the same hue as the committed piece");
+}
+
+static void test_welcome_animation(void)
+{
+    static const unsigned expected_lights[] = {16u,24u,32u,40u,32u,24u};
+    unsigned step, row, col;
+    for (step=0u; step<APP_LED_WELCOME_STEPS; ++step) {
+        unsigned lit=0u;
+        for (row=0u; row<8u; ++row) {
+            for (col=0u; col<8u; ++col) {
+                uint32_t pixel=app_led_welcome_pixel(row,col,step);
+                lit+=(pixel!=0u);
+                check(pixel==app_led_welcome_pixel(7u-row,col,step) &&
+                    pixel==app_led_welcome_pixel(row,7u-col,step),"each welcome frame is symmetric along both axes");
+            }
+        }
+        check(lit==expected_lights[step],"welcome border expands from all four corners and retracts");
+    }
+    check(app_led_welcome_pixel(3u,3u,0u)==app_led_piece_color(OT_WHITE,28u) &&
+        app_led_welcome_pixel(3u,3u,3u)==app_led_piece_color(OT_WHITE,52u),"center diamond pulses as the border expands");
+}
+
 static void exercise_hardware_path(void)
 {
     AppBasicSnapshot snapshot;
@@ -131,61 +205,62 @@ static void exercise_hardware_path(void)
     AppBasic_Tick(0u);
     send_command("@SYNC5,1");
     check(!strncmp(latest_frame,"@GAME5,1,",9u),"host can negotiate external AI");
-    AppBasic_HandleKey('D');
-    AppBasic_HandleKey('5');
+    AppBasic_HandleKey(4u);
+    AppBasic_HandleKey(16u);
+    AppBasic_HandleKey(11u);
     AppBasic_Tick(10u);
     AppBasic_GetSnapshot(&snapshot);
-    check(snapshot.game.turn==OT_WHITE && !strncmp(latest_frame,"@GAME5,0,3,2,",13u) &&
+    check(snapshot.game.turn==OT_WHITE && !strncmp(latest_frame,"@GAME5,0,5,2,",13u) &&
         strstr(latest_frame,",180,1,4,0,")!=NULL,"keypad black move publishes the current stage and score");
-    AppBasic_HandleKey('5');
-    AppBasic_HandleKey('B');
+    AppBasic_HandleKey(11u);
+    AppBasic_HandleKey(8u);
     AppBasic_Tick(1000u);
     AppBasic_GetSnapshot(&snapshot);
-    check(snapshot.game.revision==4u && snapshot.game.turn==OT_WHITE,"pause holds the computer turn; keypad cannot play white");
-    AppBasic_HandleKey('B');
+    check(snapshot.game.revision==6u && snapshot.game.turn==OT_WHITE,"pause holds the computer turn; keypad cannot play white");
+    AppBasic_HandleKey(8u);
     AppBasic_Tick(1240u);
     AppBasic_GetSnapshot(&snapshot);
-    check(snapshot.game.revision==6u && snapshot.game.turn==OT_BLACK && snapshot.game.black==3u && snapshot.game.white==3u &&
-        !strncmp(latest_frame,"@GAME5,0,6,1,",13u),"challenge still plays white without a host move");
+    check(snapshot.game.revision==8u && snapshot.game.turn==OT_BLACK && snapshot.game.black==3u && snapshot.game.white==3u &&
+        !strncmp(latest_frame,"@GAME5,0,8,1,",13u),"challenge still plays white without a host move");
 
-    AppBasic_HandleKey('D');
+    AppBasic_HandleKey(16u);
     AppBasic_Tick(1250u);
     check(reported_mode()==OT_CASUAL,"S16 toggles an active challenge off");
-    AppBasic_HandleKey('#');
+    AppBasic_HandleKey(1u);
     AppBasic_Tick(1260u);
-    check(reported_mode()==OT_EXTERNAL_AI && strstr(latest_frame,",180,0,4,0,")!=NULL,"S15 starts external AI mode");
-    AppBasic_HandleKey('5');
+    check(reported_mode()==OT_EXTERNAL_AI && strstr(latest_frame,",180,0,4,0,")!=NULL,"S1 starts external AI mode");
+    AppBasic_HandleKey(11u);
     AppBasic_Tick(1270u);
     AppBasic_GetSnapshot(&snapshot);
     check(snapshot.game.turn==OT_WHITE && snapshot.game.black==4u,"board publishes the black move for EN");
-    AppBasic_HandleKey('5');
+    AppBasic_HandleKey(11u);
     AppBasic_Tick(3500u);
     AppBasic_GetSnapshot(&snapshot);
-    check(snapshot.game.turn==OT_WHITE && snapshot.game.revision==9u,"keypad and board engine cannot play EN's turn");
-    send_command("@PLAY,2,9,2,2");
+    check(snapshot.game.turn==OT_WHITE && snapshot.game.revision==11u,"keypad and board engine cannot play EN's turn");
+    send_command("@PLAY,2,11,2,2");
     check(strstr(latest_frame,",COMPUTER_TURN,")!=NULL,"human serial moves cannot play EN's turn");
-    send_command("@AI,3,8,2,2");
+    send_command("@AI,3,10,2,2");
     check(strstr(latest_frame,",STALE,")!=NULL,"stale EN result is rejected");
-    send_command("@AI,4,9,0,0");
+    send_command("@AI,4,11,0,0");
     check(strstr(latest_frame,",ILLEGAL,")!=NULL,"illegal EN result is rejected");
     send_command("@SYNC4,5");
     check(!strncmp(latest_frame,"@GAME4,5,",9u) && reported_mode()==OT_CASUAL,"old hosts can still read the board");
     send_command("@SYNC5,6");
-    send_command("@AI,7,9,2,2");
+    send_command("@AI,7,11,2,2");
     AppBasic_GetSnapshot(&snapshot);
     check(snapshot.game.turn==OT_BLACK && snapshot.game.black==3u && snapshot.game.white==3u &&
         reported_mode()==OT_EXTERNAL_AI,"firmware confirms the legal EN move");
-    send_command("@AI,8,10,0,0");
+    send_command("@AI,8,12,0,0");
     check(strstr(latest_frame,",NOT_AI_TURN,")!=NULL,"EN cannot play black's turn");
-    AppBasic_HandleKey('#');
+    AppBasic_HandleKey(1u);
     AppBasic_Tick(3510u);
-    check(reported_mode()==OT_CASUAL,"S15 toggles AI off");
-    AppBasic_HandleKey('9');
+    check(reported_mode()==OT_CASUAL,"S1 toggles AI off");
+    AppBasic_HandleKey(9u);
     AppBasic_Tick(3520u);
-    check(reported_mode()==OT_TIMED,"S11 keeps the keypad timer available");
-    AppBasic_HandleKey('9');
+    check(reported_mode()==OT_TIMED,"S9 keeps the keypad timer available");
+    AppBasic_HandleKey(9u);
     AppBasic_Tick(3530u);
-    check(reported_mode()==OT_CASUAL,"S11 toggles timed mode off");
+    check(reported_mode()==OT_CASUAL,"S9 toggles timed mode off");
 }
 
 static void test_stage_scoring(void)
@@ -306,6 +381,8 @@ int main(void)
     check(ot_match_control(&m,OT_START,0u,0u) && m.remaining_ms[0]==1000u && m.remaining_ms[1]==1000u,
           "new round resets both sides");
     test_stage_scoring();
+    exercise_standby();
+    test_welcome_animation();
     exercise_hardware_path();
     {
         static const unsigned late_choices[] = {15u,7u,63u,7u};
