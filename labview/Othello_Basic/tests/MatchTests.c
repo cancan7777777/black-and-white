@@ -2,6 +2,7 @@
 #include "app_basic.h"
 #include "app_led_heart.h"
 #include "app_led_display.h"
+#include "app_keypad.h"
 #include "ot_protocol.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -142,21 +143,21 @@ static void exercise_standby(void)
     check(strstr(latest_frame,",STANDBY,")!=NULL,"the host cannot start without the hardware switch");
     send_command("@PLAY,3,2,2,3");
     check(strstr(latest_frame,",STANDBY,")!=NULL,"a serial move cannot leave standby");
-    AppBasic_HandleKey(4u);
-    AppBasic_HandleKey(10u);
+    AppBasic_HandleKey(app_keypad_button(3u));
+    AppBasic_HandleKey(app_keypad_button(14u));
     AppBasic_GetSnapshot(&snapshot);
     check(!snapshot.standby && snapshot.game.black == 2u && snapshot.game.white == 2u &&
         snapshot.cursor_row == 1u && snapshot.cursor_col == 3u,"S4 opens the game and S10 moves up");
-    AppBasic_HandleKey(15u);
+    AppBasic_HandleKey(app_keypad_button(11u));
     AppBasic_GetSnapshot(&snapshot);
     check(snapshot.cursor_row == 1u && snapshot.cursor_col == 2u,"S15 moves left");
-    AppBasic_HandleKey(12u);
+    AppBasic_HandleKey(app_keypad_button(6u));
     AppBasic_GetSnapshot(&snapshot);
     check(snapshot.cursor_row == 2u && snapshot.cursor_col == 2u,"S12 moves down");
-    AppBasic_HandleKey(7u);
+    AppBasic_HandleKey(app_keypad_button(9u));
     AppBasic_GetSnapshot(&snapshot);
     check(snapshot.cursor_row == 2u && snapshot.cursor_col == 3u,"S7 moves right");
-    AppBasic_HandleKey(11u);
+    AppBasic_HandleKey(app_keypad_button(10u));
     AppBasic_GetSnapshot(&snapshot);
     check(snapshot.game.board[19] == OT_BLACK && snapshot.game.turn == OT_WHITE,"S11 confirms D3 and changes turn");
     AppBasic_HandleKey(4u);
@@ -168,16 +169,32 @@ static void exercise_standby(void)
     check(!snapshot.standby && snapshot.result == OT_RESULT_NONE && snapshot.game.black == 2u &&
         snapshot.game.white == 2u && snapshot.game.turn == OT_BLACK,"S4 opens a fresh board after standby");
 
-    check(app_led_welcome_pixel(4u,4u,0u)==app_led_piece_color(OT_WHITE,APP_LED_PIECE_LEVEL) &&
-        app_led_welcome_pixel(0u,0u,0u)>app_led_welcome_pixel(0u,0u,1u) &&
-        app_led_welcome_pixel(0u,1u,0u)==0u && app_led_welcome_pixel(0u,1u,1u)!=0u,
-        "the standby play symbol stays lit while the border advances");
     check(app_led_board_pixel(OT_EMPTY,1u,OT_BLACK)==0x0E3800u &&
         app_led_board_pixel(OT_EMPTY,1u,OT_WHITE)==0x380038u &&
         app_led_board_pixel(OT_BLACK,0u,OT_WHITE)==0x0C3000u &&
         app_led_board_pixel(OT_WHITE,0u,OT_BLACK)==0x300030u &&
         app_led_board_pixel(OT_EMPTY,0u,OT_WHITE)==0u,
         "empty-square previews blink in the same hue as the committed piece");
+}
+
+static void test_welcome_animation(void)
+{
+    static const unsigned expected_lights[] = {16u,24u,32u,40u,32u,24u};
+    unsigned step, row, col;
+    for (step=0u; step<APP_LED_WELCOME_STEPS; ++step) {
+        unsigned lit=0u;
+        for (row=0u; row<8u; ++row) {
+            for (col=0u; col<8u; ++col) {
+                uint32_t pixel=app_led_welcome_pixel(row,col,step);
+                lit+=(pixel!=0u);
+                check(pixel==app_led_welcome_pixel(7u-row,col,step) &&
+                    pixel==app_led_welcome_pixel(row,7u-col,step),"each welcome frame is symmetric along both axes");
+            }
+        }
+        check(lit==expected_lights[step],"welcome border expands from all four corners and retracts");
+    }
+    check(app_led_welcome_pixel(3u,3u,0u)==app_led_piece_color(OT_WHITE,28u) &&
+        app_led_welcome_pixel(3u,3u,3u)==app_led_piece_color(OT_WHITE,52u),"center diamond pulses as the border expands");
 }
 
 static void exercise_hardware_path(void)
@@ -365,6 +382,7 @@ int main(void)
           "new round resets both sides");
     test_stage_scoring();
     exercise_standby();
+    test_welcome_animation();
     exercise_hardware_path();
     {
         static const unsigned late_choices[] = {15u,7u,63u,7u};

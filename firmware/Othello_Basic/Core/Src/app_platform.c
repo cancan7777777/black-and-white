@@ -1,5 +1,6 @@
 #include "app_platform.h"
 #include "app_config.h"
+#include "app_keypad.h"
 #include "app_led_display.h"
 #include "app_led_heart.h"
 #include "ot_protocol.h"
@@ -151,7 +152,7 @@ static void scan_keyboard(uint32_t now)
     key_locked = 1u; /* A single press or a chord requires a complete release next. */
     if (mask & (uint16_t)(mask - 1u)) return;
     for (index = 0u; index < 16u; ++index)
-        if (mask == (uint16_t)(1u << index)) { key_event = (uint8_t)(index + 1u); break; }
+        if (mask == (uint16_t)(1u << index)) { key_event = app_keypad_button(index); break; }
 }
 
 uint8_t AppPlatform_TakeKey(void)

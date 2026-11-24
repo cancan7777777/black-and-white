@@ -93,7 +93,7 @@ LED1 DOUT/DO ──────────────────────�
 3. 先画并检查第 2 节最小系统，再按第 3 节逐行画键盘，最后连 PA8 和点阵。布线时从引脚端点开始，在目标引脚端点结束。T 形分支检查有接点，避免把交叉线误当成连接。长线用完全同名的网络标签，例如 `KEY_ROW0`，可以点击或高亮网络核查。
 4. 双击 `U1`，在 **Program File** 选择 `D:\black&white\build\Othello_Dual_Clock.hex`。本机 Keil 的对应产物为 `D:\black&white\firmware\Othello_Basic\MDK-ARM\Othello_Basic\Othello_Basic.hex`。如果换了电脑或 HEX 尚未生成，打开 `firmware/Othello_Basic/MDK-ARM/Othello_Basic.uvprojx`，在 `Options for Target` → `Output` 确认 `Create HEX File`，点 `Build`，用该目标目录生成的 `Othello_Basic.hex`。在 Proteus 加载 HEX 即可开始仿真，无需通过 ATK-XISP 或 LabVIEW 写入。[Labcenter 固件加载与编译器支持](https://www.labcenter.com/compilers/)
 5. `STM32F103C8` 模型的 **OSC Frequency** 设为 **8 MHz**，与 HSE 配置匹配。**72 MHz 是固件 PLL 配置后的 SYSCLK**，不能填在 OSC 输入频率字段。`OSC32 Frequency` 保持默认，本工程没有外部 32.768 kHz 时钟。若换用了名称不同的 VSM 模型，先确认字段描述的是外部晶振还是 CPU 时钟，再用第 7 节的位宽核对结果。
-6. 保存 `.pdsprj`，点击左下角 **Run ▶**。点阵先显示播放图标和跑马边框。按 **S4** 开局，中间四子为 D4、E5 青色，E4、D5 橙色，D3 为闪烁橙色光标。用 **S10／S12／S15／S7** 试上下左右，按 S14 重开，再按 **S11** 在 D3 下第一枚黑棋，D4 应由青变橙。再次按 S4 可回待机。修改连线或换 HEX 前点 **Stop ■**，保存后再运行。
+6. 保存 `.pdsprj`，点击左下角 **Run ▶**。点阵先显示青色菱形和从四角同步展开的橙色边框。按 **S4** 开局，中间四子为 D4、E5 青色，E4、D5 橙色，D3 为闪烁橙色光标。最新版 HEX 内含实板键帽校正。第 3 节按行列直连时，Proteus 中的 **S15／S7／S12／S10** 对应上／下／左／右。按 S14 重开，再按 **S11** 在 D3 下第一枚黑棋，D4 应由青变橙。再次按 S4 可回待机。修改连线或换 HEX 前点 **Stop ■**，保存后再运行。
 7. 若找不到 `STM32F103C8` 的 VSM 模型，先核查 ARM Cortex-M3 仿真组件及许可。仅有 EDA 原理图符号的库件无法执行 HEX。若缺的是 `WS2812X8X8`，先搜 `WS2812X8` 或 `WS2812`；连一个像素时 A1 开局为空，先按 **S4** 开局，再按 **S13** 开启编辑，把光标移到 A1 并按 **S11** 写入黑棋。没有可用 LED 模型时，用 PA8 波形和串口状态验证，普通 RGB LED 无法解码这条单线的数据帧。[Labcenter VSM 模型与仪器](https://www.labcenter.com/peripherals/)
 
 ## 6. USART1 与 LabVIEW
@@ -131,7 +131,7 @@ LED1 DOUT/DO ──────────────────────�
 | 点运行就报无模型或无程序 | 核对 `STM32F103C8` 是否为 VSM 器件、许可是否可用、`Program File` 路径是否存在。若使用当前 HEX，目标 Flash 起始地址应是 `0x08000000`。 |
 | MCU 无运行迹象 | 测 3.3 V、共地、`BOOT0=0`、`NRST` 非低电平，再核对 `OSC Frequency=8MHz`。用 PB0～PB11 的扫描或 PA9 的初始上报区分启动问题和 LED 模型问题。 |
 | 点阵黑屏或显示位置错 | PA8 用上升沿触发，先以约 `0.5 µs/div` 看 0/1 的高脉宽，再以约 `0.5 ms/div` 看整帧。若信号正确，查 `DIN/DOUT`、点阵电源与像素级联顺序。用 S13 编辑 A1、H1、A2 检查行起点与第二行方向。 |
-| 方向或确认键不对 | 确认 S4 已开局，再从 `ROW/COL` 交点核对 S10 上、S15 左、S12 下、S7 右、S11 落子。使用单个短按，确认松开后列能回到高电平。 |
+| 方向或确认键不对 | 确认 S4 已开局。实板按 S10 上、S15 左、S12 下、S7 右。第 3 节的直连仿真用 S15 上、S12 左、S7 下、S10 右。两种布局都按 S11 落子。使用单个短按，确认松开后列能回到高电平。 |
 | 串口乱码或 LabVIEW 未同步 | 查 RX/TX 方向、8.68 µs 位宽、终端是否支持 115200、LF 是否发出、两个应用各占不同的配对 COM。收到 `@GAME6` 后再验收双向落子。 |
 | 终局和模式演示 | 普通模式下以实际结算触发胜方颜色爱心，平局或主动退出不触发爱心。S16 闯关结束时可观察 `WIN/OVER` 滚动和自动回普通模式。滚动和爱心属于点阵显示，串口同步验收以确认的棋盘、计数和终局状态为准。 |
 

@@ -4,8 +4,8 @@
 #include "app_config.h"
 #include "othello.h"
 
-#define APP_LED_WELCOME_STEPS 28u
-#define APP_LED_WELCOME_STEP_MS 90u
+#define APP_LED_WELCOME_STEPS 6u
+#define APP_LED_WELCOME_STEP_MS 160u
 
 static inline uint32_t app_led_piece_color(uint8_t piece, uint8_t level)
 {
@@ -22,16 +22,16 @@ static inline uint32_t app_led_board_pixel(uint8_t piece, uint8_t selected, uint
 
 static inline uint32_t app_led_welcome_pixel(unsigned row, unsigned col, unsigned step)
 {
-    static const uint8_t play_icon[8] = { 0u, 0u, 0x20u, 0x38u, 0x3Cu, 0x38u, 0x20u, 0u };
-    unsigned border;
-    if (row == 0u) border = col;
-    else if (col == 7u) border = 7u + row;
-    else if (row == 7u) border = 21u - col;
-    else if (col == 0u) border = 28u - row;
-    else return (play_icon[row] & (0x80u >> col)) ? app_led_piece_color(OT_WHITE, APP_LED_PIECE_LEVEL) : 0u;
+    unsigned x = col < 4u ? col : 7u - col;
+    unsigned y = row < 4u ? row : 7u - row;
+    unsigned reach = step <= 3u ? step : APP_LED_WELCOME_STEPS - step;
+    unsigned distance = x + y;
 
-    border = (step + APP_LED_WELCOME_STEPS - border) % APP_LED_WELCOME_STEPS;
-    return border < 3u ? app_led_piece_color(OT_BLACK, (uint8_t)(60u - 16u * border)) : 0u;
+    if (x == 0u || y == 0u) {
+        if (distance > reach) return 0u;
+        return app_led_piece_color(OT_BLACK, (uint8_t)(60u - 8u * (reach - distance)));
+    }
+    return distance >= 5u ? app_led_piece_color(OT_WHITE, (uint8_t)(28u + 8u * reach)) : 0u;
 }
 
 #endif
