@@ -1,68 +1,125 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="760" height="930" viewBox="0 0 760 930"
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="1620" viewBox="0 0 1120 1620"
      role="img" aria-labelledby="system-title system-desc">
   <title id="system-title">黑白棋课程设计总体框图</title>
-  <desc id="system-desc">LabVIEW 与 STM32 通过串口双向通信。STM32 读取矩阵键盘并驱动棋盘点阵，LabVIEW 在 AI 对弈时调用本机 Egaroucid。</desc>
+  <desc id="system-desc">上位机处理界面、会话、离线模拟、存档与 Egaroucid 调用。STM32 接收串口和矩阵键盘输入，维护棋盘及对局状态，并将状态回传给上位机、将图案发送到点阵。</desc>
 
-  <rect width="760" height="930" fill="#fff"/>
+  <rect width="1120" height="1620" fill="#fff"/>
+  <g fill="#fff" stroke="#000" stroke-width="1.7">
+    <rect x="40" y="104" width="1040" height="684" rx="3"/>
+    <rect x="40" y="924" width="1040" height="472" rx="3"/>
+  </g>
 
-  <g fill="none" stroke="#000" stroke-width="2.5">
-    <line x1="290" y1="302" x2="290" y2="208"/>
-    <line x1="470" y1="208" x2="470" y2="302"/>
-    <line x1="290" y1="416" x2="290" y2="534"/>
-    <line x1="470" y1="534" x2="470" y2="416"/>
-    <line x1="194" y1="766" x2="194" y2="648"/>
-    <line x1="566" y1="648" x2="566" y2="766"/>
+  <g fill="none" stroke="#000" stroke-width="2.4">
+    <path d="M 468 302 L 468 390"/>
+    <path d="M 652 390 L 652 302"/>
+    <path d="M 360 440 L 286 440"/>
+    <path d="M 286 493 L 360 493"/>
+    <path d="M 760 467 L 834 467"/>
+    <path d="M 468 544 L 468 650"/>
+    <path d="M 652 650 L 652 544"/>
+    <path d="M 709 544 V 600 Q 709 609 718 609 H 895 Q 904 609 904 618 L 904 650"/>
+    <path d="M 982 650 V 593 Q 982 584 973 584 H 742 Q 733 584 733 575 L 733 544"/>
+    <path d="M 468 756 L 468 1006"/>
+    <path d="M 652 1006 L 652 756"/>
+    <path d="M 468 1121 L 468 1210"/>
+    <path d="M 652 1210 L 652 1121"/>
+    <path d="M 286 1282 L 350 1282"/>
+    <path d="M 770 1282 L 834 1282"/>
+    <path d="M 179 1478 L 179 1354"/>
+    <path d="M 941 1354 L 941 1478"/>
   </g>
   <g fill="#000">
-    <path d="M284 220 L290 208 L296 220 Z"/>
-    <path d="M464 290 L470 302 L476 290 Z"/>
-    <path d="M284 522 L290 534 L296 522 Z"/>
-    <path d="M464 428 L470 416 L476 428 Z"/>
-    <path d="M188 660 L194 648 L200 660 Z"/>
-    <path d="M560 754 L566 766 L572 754 Z"/>
+    <path d="M 462 377 L 468 390 L 474 377 Z"/>
+    <path d="M 658 315 L 652 302 L 646 315 Z"/>
+    <path d="M 299 434 L 286 440 L 299 446 Z"/>
+    <path d="M 347 499 L 360 493 L 347 487 Z"/>
+    <path d="M 821 473 L 834 467 L 821 461 Z"/>
+    <path d="M 462 637 L 468 650 L 474 637 Z"/>
+    <path d="M 658 557 L 652 544 L 646 557 Z"/>
+    <path d="M 898 637 L 904 650 L 910 637 Z"/>
+    <path d="M 739 557 L 733 544 L 727 557 Z"/>
+    <path d="M 462 993 L 468 1006 L 474 993 Z"/>
+    <path d="M 658 769 L 652 756 L 646 769 Z"/>
+    <path d="M 462 1197 L 468 1210 L 474 1197 Z"/>
+    <path d="M 658 1134 L 652 1121 L 646 1134 Z"/>
+    <path d="M 337 1288 L 350 1282 L 337 1276 Z"/>
+    <path d="M 821 1288 L 834 1282 L 821 1276 Z"/>
+    <path d="M 185 1367 L 179 1354 L 173 1367 Z"/>
+    <path d="M 935 1465 L 941 1478 L 947 1465 Z"/>
   </g>
-
-  <g fill="#fff" stroke="#000" stroke-width="2.5">
-    <rect x="190" y="112" width="380" height="96" rx="3"/>
-    <rect x="164" y="302" width="432" height="114" rx="3"/>
-    <rect x="164" y="534" width="432" height="114" rx="3"/>
-    <rect x="49" y="766" width="290" height="106" rx="3"/>
-    <rect x="421" y="766" width="290" height="106" rx="3"/>
+  <g fill="#fff" stroke="#000" stroke-width="2.4">
+    <rect x="318" y="182" width="484" height="120" rx="3"/>
+    <rect x="360" y="390" width="400" height="154" rx="3"/>
+    <rect x="72" y="390" width="214" height="154" rx="3"/>
+    <rect x="834" y="390" width="214" height="154" rx="3"/>
+    <rect x="360" y="650" width="400" height="106" rx="3"/>
+    <rect x="834" y="650" width="214" height="106" rx="3"/>
+    <rect x="360" y="1006" width="400" height="115" rx="3"/>
+    <rect x="350" y="1210" width="420" height="144" rx="3"/>
+    <rect x="72" y="1210" width="214" height="144" rx="3"/>
+    <rect x="834" y="1210" width="214" height="144" rx="3"/>
+    <rect x="72" y="1478" width="214" height="94" rx="3"/>
+    <rect x="834" y="1478" width="214" height="94" rx="3"/>
   </g>
-
   <g fill="#000" font-family="Microsoft YaHei, Noto Sans CJK SC, SimHei, sans-serif">
-    <text x="380" y="69" font-size="34" font-weight="700" text-anchor="middle">黑白棋课程设计总体框图</text>
-
-    <g font-size="25" font-weight="700">
-      <text x="380" y="153" text-anchor="middle">Egaroucid 引擎</text>
-      <text x="380" y="342" text-anchor="middle">LabVIEW 上位机</text>
-      <text x="380" y="574" text-anchor="middle">STM32F103C8 下位机</text>
-      <text x="194" y="808" text-anchor="middle">4×4 矩阵键盘</text>
-      <text x="566" y="808" text-anchor="middle">8×8 WS2812B 点阵</text>
-    </g>
-    <g font-size="19">
-      <text x="380" y="183" text-anchor="middle">AI 对弈时启用</text>
-      <text x="380" y="374" text-anchor="middle">虚拟棋盘与对局控制</text>
-      <text x="380" y="398" text-anchor="middle">棋局回放与排行榜</text>
-      <text x="380" y="606" text-anchor="middle">维护棋盘状态并判定落子</text>
-      <text x="380" y="630" text-anchor="middle">闯关、双钟计时与结算</text>
-      <text x="194" y="843" text-anchor="middle">选格、确认落子、模式切换</text>
-      <text x="566" y="843" text-anchor="middle">棋盘显示与开机、结算动画</text>
-    </g>
-
-    <g font-size="18">
-      <text x="274" y="261" text-anchor="end">当前棋盘</text>
-      <text x="486" y="261" text-anchor="start">白棋应手</text>
-
-      <text x="274" y="470" text-anchor="end">控制指令</text>
-      <text x="274" y="496" text-anchor="end">落子坐标</text>
-      <text x="380" y="470" text-anchor="middle">USB 转串口</text>
-      <text x="380" y="496" text-anchor="middle">USART1</text>
-      <text x="486" y="470" text-anchor="start">已确认棋盘</text>
-      <text x="486" y="496" text-anchor="start">对局状态</text>
-
-      <text x="210" y="714" text-anchor="start">GPIO 扫描</text>
-      <text x="582" y="714" text-anchor="start">PA8 数据输出</text>
-    </g>
+    <text x="560" y="68" font-size="39" text-anchor="middle" font-weight="700">黑白棋课程设计总体框图</text>
+    <text x="72" y="146" font-size="28" text-anchor="start" font-weight="700">上位机  |  Windows · LabVIEW</text>
+    <text x="72" y="968" font-size="28" text-anchor="start" font-weight="700">下位机  |  STM32F103C8</text>
+    <text x="560" y="221" font-size="25" text-anchor="middle" font-weight="700">LabVIEW 前面板</text>
+    <text x="560" y="252" font-size="19" text-anchor="middle">8×8 虚拟棋盘、落子与对局控制</text>
+    <text x="560" y="278" font-size="19" text-anchor="middle">双钟、比分、串口设置与通信日志</text>
+    <text x="560" y="429" font-size="25" text-anchor="middle" font-weight="700">对局协调与通信会话</text>
+    <text x="560" y="460" font-size="19" text-anchor="middle">OthelloPanel / HostSession</text>
+    <text x="560" y="486" font-size="19" text-anchor="middle">组装指令，校验 CRC、序号与版本</text>
+    <text x="560" y="512" font-size="19" text-anchor="middle">分发已确认的棋盘、时间与结果</text>
+    <text x="179" y="429" font-size="22" text-anchor="middle" font-weight="700">Egaroucid 引擎</text>
+    <text x="179" y="460" font-size="18" text-anchor="middle">AI 对弈时启用</text>
+    <text x="179" y="486" font-size="18" text-anchor="middle">标准输入/输出通信</text>
+    <text x="179" y="512" font-size="18" text-anchor="middle">搜索白棋应手</text>
+    <text x="941" y="429" font-size="23" text-anchor="middle" font-weight="700">棋局存档</text>
+    <text x="941" y="460" font-size="18" text-anchor="middle">XML 保存棋局与结果</text>
+    <text x="941" y="486" font-size="18" text-anchor="middle">逐步回放、分模式排行</text>
+    <text x="941" y="512" font-size="18" text-anchor="middle">导出 CSV</text>
+    <text x="560" y="685" font-size="25" text-anchor="middle" font-weight="700">真实串口连接</text>
+    <text x="560" y="716" font-size="19" text-anchor="middle">USB 转串口 · 115200 Bd / 8N1</text>
+    <text x="941" y="685" font-size="23" text-anchor="middle" font-weight="700">离线模拟器</text>
+    <text x="941" y="716" font-size="18" text-anchor="middle">复用 C 棋规与协议</text>
+    <text x="560" y="1041" font-size="24" text-anchor="middle" font-weight="700">USART1 串口协议</text>
+    <text x="560" y="1072" font-size="18" text-anchor="middle">PA9 发送 · PA10 接收</text>
+    <text x="560" y="1098" font-size="18" text-anchor="middle">收帧校验、版本检查与应答</text>
+    <text x="560" y="1249" font-size="25" text-anchor="middle" font-weight="700">游戏状态机</text>
+    <text x="560" y="1280" font-size="19" text-anchor="middle">合法落子、翻子、轮换与棋盘编辑</text>
+    <text x="560" y="1306" font-size="19" text-anchor="middle">普通 / 闯关 / 计时 / AI 对弈</text>
+    <text x="560" y="1332" font-size="19" text-anchor="middle">双钟超时判负、关卡计分与结算</text>
+    <text x="179" y="1249" font-size="22" text-anchor="middle" font-weight="700">键盘扫描与消抖</text>
+    <text x="179" y="1280" font-size="16" text-anchor="middle">行 PB0、PB1、PB10、PB11</text>
+    <text x="179" y="1306" font-size="16" text-anchor="middle">列 PB12–PB15</text>
+    <text x="179" y="1332" font-size="16" text-anchor="middle">方向、落子与模式切换</text>
+    <text x="941" y="1249" font-size="22" text-anchor="middle" font-weight="700">点阵渲染与发送</text>
+    <text x="941" y="1280" font-size="16" text-anchor="middle">棋子颜色与待落子光标</text>
+    <text x="941" y="1306" font-size="16" text-anchor="middle">开机、爱心与终局动画</text>
+    <text x="941" y="1332" font-size="16" text-anchor="middle">TIM1_CH1 + DMA1_CH2</text>
+    <text x="179" y="1513" font-size="23" text-anchor="middle" font-weight="700">4×4 矩阵键盘</text>
+    <text x="179" y="1544" font-size="18" text-anchor="middle">实体按键输入</text>
+    <text x="941" y="1513" font-size="23" text-anchor="middle" font-weight="700">8×8 全彩点阵</text>
+    <text x="941" y="1544" font-size="18" text-anchor="middle">WS2812B · 64 颗 LED</text>
+    <text x="450" y="350" font-size="19" text-anchor="end">操作事件</text>
+    <text x="670" y="350" font-size="19" text-anchor="start">棋盘与状态</text>
+    <text x="323" y="429" font-size="17" text-anchor="middle">局面</text>
+    <text x="323" y="482" font-size="17" text-anchor="middle">应手</text>
+    <text x="797" y="456" font-size="17" text-anchor="middle">归档</text>
+    <text x="560" y="600" font-size="19" text-anchor="middle">实机模式</text>
+    <text x="849" y="573" font-size="17" text-anchor="middle">模拟状态</text>
+    <text x="815" y="633" font-size="17" text-anchor="middle">模拟指令</text>
+    <text x="449" y="834" font-size="21" text-anchor="end">下发查询、控制及落子</text>
+    <text x="449" y="864" font-size="17" text-anchor="end">SYNC7 / PLAY / CTL / EDIT / AI</text>
+    <text x="670" y="834" font-size="21" text-anchor="start">回传棋盘、回合、计时与得分</text>
+    <text x="670" y="864" font-size="17" text-anchor="start">GAME7 / ERROR</text>
+    <text x="450" y="1170" font-size="19" text-anchor="end">已校验指令</text>
+    <text x="670" y="1170" font-size="19" text-anchor="start">已确认状态</text>
+    <text x="318" y="1270" font-size="17" text-anchor="middle">键值</text>
+    <text x="802" y="1270" font-size="17" text-anchor="middle">盘面</text>
+    <text x="197" y="1429" font-size="19" text-anchor="start">4 行 × 4 列</text>
+    <text x="959" y="1429" font-size="19" text-anchor="start">PA8 · 800 kHz</text>
   </g>
 </svg>
