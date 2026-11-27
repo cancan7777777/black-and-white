@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="930" viewBox="0 0 760 930"
+     role="img" aria-labelledby="system-title system-desc">
+  <title id="system-title">黑白棋课程设计总体框图</title>
+  <desc id="system-desc">LabVIEW 与 STM32 通过串口双向通信。STM32 读取矩阵键盘并驱动棋盘点阵，LabVIEW 在 AI 对弈时调用本机 Egaroucid。</desc>
+
+  <rect width="760" height="930" fill="#fff"/>
+
+  <g fill="none" stroke="#000" stroke-width="2.5">
+    <line x1="290" y1="302" x2="290" y2="208"/>
+    <line x1="470" y1="208" x2="470" y2="302"/>
+    <line x1="290" y1="416" x2="290" y2="534"/>
+    <line x1="470" y1="534" x2="470" y2="416"/>
+    <line x1="194" y1="766" x2="194" y2="648"/>
+    <line x1="566" y1="648" x2="566" y2="766"/>
+  </g>
+  <g fill="#000">
+    <path d="M284 220 L290 208 L296 220 Z"/>
+    <path d="M464 290 L470 302 L476 290 Z"/>
+    <path d="M284 522 L290 534 L296 522 Z"/>
+    <path d="M464 428 L470 416 L476 428 Z"/>
+    <path d="M188 660 L194 648 L200 660 Z"/>
+    <path d="M560 754 L566 766 L572 754 Z"/>
+  </g>
+
+  <g fill="#fff" stroke="#000" stroke-width="2.5">
+    <rect x="190" y="112" width="380" height="96" rx="3"/>
+    <rect x="164" y="302" width="432" height="114" rx="3"/>
+    <rect x="164" y="534" width="432" height="114" rx="3"/>
+    <rect x="49" y="766" width="290" height="106" rx="3"/>
+    <rect x="421" y="766" width="290" height="106" rx="3"/>
+  </g>
+
+  <g fill="#000" font-family="Microsoft YaHei, Noto Sans CJK SC, SimHei, sans-serif">
+    <text x="380" y="69" font-size="34" font-weight="700" text-anchor="middle">黑白棋课程设计总体框图</text>
+
+    <g font-size="25" font-weight="700">
+      <text x="380" y="153" text-anchor="middle">Egaroucid 引擎</text>
+      <text x="380" y="342" text-anchor="middle">LabVIEW 上位机</text>
+      <text x="380" y="574" text-anchor="middle">STM32F103C8 下位机</text>
+      <text x="194" y="808" text-anchor="middle">4×4 矩阵键盘</text>
+      <text x="566" y="808" text-anchor="middle">8×8 WS2812B 点阵</text>
+    </g>
+    <g font-size="19">
+      <text x="380" y="183" text-anchor="middle">AI 对弈时启用</text>
+      <text x="380" y="374" text-anchor="middle">虚拟棋盘与对局控制</text>
+      <text x="380" y="398" text-anchor="middle">棋局回放与排行榜</text>
+      <text x="380" y="606" text-anchor="middle">维护棋盘状态并判定落子</text>
+      <text x="380" y="630" text-anchor="middle">闯关、双钟计时与结算</text>
+      <text x="194" y="843" text-anchor="middle">选格、确认落子、模式切换</text>
+      <text x="566" y="843" text-anchor="middle">棋盘显示与开机、结算动画</text>
+    </g>
+
+    <g font-size="18">
+      <text x="274" y="261" text-anchor="end">当前棋盘</text>
+      <text x="486" y="261" text-anchor="start">白棋应手</text>
+
+      <text x="274" y="470" text-anchor="end">控制指令</text>
+      <text x="274" y="496" text-anchor="end">落子坐标</text>
+      <text x="380" y="470" text-anchor="middle">USB 转串口</text>
+      <text x="380" y="496" text-anchor="middle">USART1</text>
+      <text x="486" y="470" text-anchor="start">已确认棋盘</text>
+      <text x="486" y="496" text-anchor="start">对局状态</text>
+
+      <text x="210" y="714" text-anchor="start">GPIO 扫描</text>
+      <text x="582" y="714" text-anchor="start">PA8 数据输出</text>
+    </g>
+  </g>
+</svg>
