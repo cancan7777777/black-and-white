@@ -118,7 +118,7 @@ namespace Othello.Basic {
                 .ThenBy(record=>record.EndedUtc).ThenBy(record=>record.Id,StringComparer.Ordinal).ToList();
         }
 
-        static bool IsSettled(GameResult result) {
+        internal static bool IsSettled(GameResult result) {
             return result==GameResult.Board || result==GameResult.Time || result==GameResult.Win || result==GameResult.Over;
         }
         internal AiMatchStats GetAiMatchStats() {

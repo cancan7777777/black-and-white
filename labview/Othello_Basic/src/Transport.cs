@@ -1,11 +1,22 @@
 using System;
 using System.ComponentModel;
+using System.Globalization;
 using System.IO;
 using System.IO.Ports;
 using System.Runtime.InteropServices;
 using System.Text;
 
 namespace Othello.Basic {
+    internal sealed class WinRates {
+        internal readonly uint Black,White,Total;
+        internal uint Draw { get { return Total-Black-White; } }
+        internal WinRates(uint black,uint white,uint total) {
+            Black=black;White=white;Total=total;
+        }
+        internal string Percent(uint count) {
+            return ((decimal)count/Total).ToString("0.#%",CultureInfo.InvariantCulture);
+        }
+    }
     public interface ITransport : IDisposable {
         event Action<string> Received;
         event Action<string> Failed;
@@ -20,6 +31,10 @@ namespace Othello.Basic {
         [DllImport(SimulatorLibrary,CallingConvention=CallingConvention.Cdecl)] static extern IntPtr sim_create();
         [DllImport(SimulatorLibrary,CallingConvention=CallingConvention.Cdecl)] static extern void sim_destroy(IntPtr game);
         [DllImport(SimulatorLibrary,CallingConvention=CallingConvention.Cdecl,CharSet=CharSet.Ansi)] static extern int sim_exchange(IntPtr game,string request,StringBuilder response,uint capacity);
+        [DllImport(SimulatorLibrary,CallingConvention=CallingConvention.Cdecl,CharSet=CharSet.Ansi)]
+        static extern int sim_win_rates(string cells,int turn,uint seed,uint games,out uint black,out uint white);
+        [DllImport(SimulatorLibrary,CallingConvention=CallingConvention.Cdecl,CharSet=CharSet.Ansi)]
+        static extern int sim_recorded_move(string before,int turn,string after);
         IntPtr game;
         public event Action<string> Received;
         public event Action<string> Failed;
@@ -33,6 +48,16 @@ namespace Othello.Basic {
                 throw new InvalidOperationException("无法加载离线模拟库，请先构建上位机。" + error.Message, error);
             }
             return handle;
+        }
+        internal static WinRates Estimate(BoardState board,uint seed=1u) {
+            const uint games=256;
+            uint black,white;
+            if(SimulatorModule.Value==IntPtr.Zero ||
+                sim_win_rates(board.Cells,board.Turn,seed,games,out black,out white)==0) return null;
+            return new WinRates(black,white,games);
+        }
+        internal static int RecordedMove(BoardState before,BoardState after) {
+            return SimulatorModule.Value==IntPtr.Zero?-1:sim_recorded_move(before.Cells,before.Turn,after.Cells);
         }
         public void Open() {
             if (game != IntPtr.Zero) throw new InvalidOperationException("模拟下位机已经连接");
