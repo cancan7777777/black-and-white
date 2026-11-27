@@ -275,10 +275,12 @@ class BasicTests {
                 var start=FindControl<Button>(panel,b=>b.Text=="开始");
                 var board=FindControl<BoardView>(panel,b=>true);
                 var modes=FindControl<ComboBox>(panel,c=>c.Items.Contains("AI 对弈"));
+                var live=FindControl<CheckBox>(panel,c=>c.Text=="实时胜率");
                 var row=FindControl<NumericUpDown>(panel,n=>n.Maximum==8);
                 var col=FindControl<NumericUpDown>(panel,n=>n.Maximum==8&&n!=row);
                 connect.PerformClick();
                 WaitForPanel(()=>board.Board!=null && apply.Enabled,"offline board connects before Egaroucid");
+                Check(live!=null && !live.Enabled,"the live win-rate switch is reserved for AI mode");
                 modes.SelectedItem="AI 对弈";
                 File.WriteAllText(config,Path.Combine(folder,"missing.exe"));
                 uint openingRevision=board.Board.Revision;
@@ -297,6 +299,15 @@ class BasicTests {
                     "live black-turn evaluation is displayed without taking the player's turn",12000);
                 Check(board.Board.Cells==InitialBoard() && FindControl<Label>(panel,l=>l.Text.Contains("暂无已完成 AI 对局"))!=null,
                     "analysis leaves the opening untouched and empty history displays no sample");
+                Check(live.Enabled && !live.Checked,"live win rates are opt-in");
+                live.Checked=true;
+                var opening=board.Board;
+                var odds=SimulatedTransport.Estimate(opening);
+                Check(odds.Total==256 && odds.Black+odds.White+odds.Draw==odds.Total,"simulated outcomes account for every trial");
+                string openingBlack=odds.Percent(odds.Black);
+                WaitForPanel(()=>FindControl<Label>(panel,l=>l.Text.StartsWith("模拟胜率 · 256 局") &&
+                    l.Text.Contains("黑胜 "+openingBlack) && l.Text.Contains("白胜 ") && l.Text.Contains("平局 "))!=null,
+                    "AI panel displays three simulated outcome probabilities");
                 move.PerformClick();
                 WaitForPanel(()=>board.Board.ExternalAiTurn && !move.Enabled,"white belongs to Egaroucid");
                 WaitForUi(160);
@@ -315,6 +326,15 @@ class BasicTests {
                 }
                 Check(board.Board.Cells[18]=='2'||board.Board.Cells[20]=='2'||board.Board.Cells[34]=='2',
                     "opening answer uses a valid white coordinate in host orientation");
+                var updated=SimulatedTransport.Estimate(board.Board);
+                string updatedBlack=updated.Percent(updated.Black);
+                Check(SimulatedTransport.RecordedMove(opening,board.Board)==-1,"a gap of two moves has no single recorded landing");
+                WaitForPanel(()=>FindControl<Label>(panel,l=>l.Text.StartsWith("模拟胜率 · 256 局") &&
+                    l.Text.Contains("黑胜 "+updatedBlack) && l.Text.Contains("白胜 "+updated.Percent(updated.White)))!=null,
+                    "the odds refresh for the new confirmed position");
+                live.Checked=false;
+                Check(FindControl<Label>(panel,l=>l.Text.Contains("暂无已完成 AI 对局"))!=null,
+                    "switching off live odds restores historical rates");
 
                 int fullGameMoves=2;
                 while(board.Board.Status==0 && fullGameMoves<60) {
@@ -345,6 +365,10 @@ class BasicTests {
                 Check(FindControl<Label>(panel,l=>l.Text.StartsWith("终局 · "))!=null &&
                     FindControl<Label>(panel,l=>l.Text.StartsWith("历史胜率 · 1 局") && l.Text.Contains("100%"))!=null,
                     "terminal board replaces analysis and updates history exactly once");
+                live.Checked=true;
+                Check(FindControl<Label>(panel,l=>l.Text=="终局 · "+outcome)!=null,
+                    "live odds at game end show the confirmed result");
+                live.Checked=false;
                 Console.WriteLine("Egaroucid offline match: "+fullGameMoves+" moves, black "+board.Board.Black+", white "+board.Board.White);
 
                 start.PerformClick();
@@ -359,6 +383,30 @@ class BasicTests {
                 Check(board.Board.Cells==InitialBoard() && board.Board.Turn==1 &&
                     FindControl<Label>(panel,l=>l.Visible && l.Text.StartsWith("历史胜率 · "))==null,
                     "no stale AI result or statistics reach the new manual connection");
+            }
+            int unreadable;
+            var completed=archive.Load(out unreadable).Find(record=>record.Mode==GameMode.ExternalAi&&record.Result==GameResult.Board);
+            Check(completed!=null && unreadable==0,"a completed AI game is available for review");
+            using(var review=new GameAnalysisWindow(completed,()=>enginePath)) {
+                review.Show();
+                var list=FindControl<ListView>(review,l=>true);
+                WaitForPanel(()=>list.Items.Count>1 && list.Items[0].SubItems[2].Text!="—",
+                    "a saved opening is evaluated by the real engine",12000);
+                var cells=list.Items[0].SubItems;
+                Check(cells[1].Text=="D3" && cells[3].Text!="—" && cells[4].Text.EndsWith("%") &&
+                    cells[5].Text.EndsWith("%") && cells[6].Text.EndsWith("%"),"review shows real move, scored engine advice and simulated probabilities");
+                list.Items[list.Items.Count-1].Selected=true;
+                Check(FindControl<BoardView>(review,b=>true).Board.Status==1,"selecting the final row shows the recorded final board");
+                review.Close();
+            }
+            using(var review=new GameAnalysisWindow(completed,null)) {
+                review.Show();
+                WaitForPanel(()=>FindControl<Label>(review,l=>l.Text.StartsWith("分析完成"))!=null,
+                    "review completes without an engine by evaluating every recorded turn",15000);
+                var list=FindControl<ListView>(review,l=>true);
+                Check(list.Items[list.Items.Count-2].SubItems[4].Text.EndsWith("%") &&
+                    list.Items[0].SubItems[2].Text=="—","engine-free review retains odds while leaving suggestions blank");
+                review.Close();
             }
             CheckPhysicalEgaroucid(enginePath,archive);
         } finally {
@@ -661,15 +709,18 @@ class BasicTests {
                 var step=FindControl<TrackBar>(replay,t=>true);
                 var previous=FindControl<Button>(replay,b=>b.Text=="上一步");
                 var next=FindControl<Button>(replay,b=>b.Text=="下一步");
+                var analyze=FindControl<Button>(replay,b=>b.Text=="分析对局");
                 var game=FindControl<ComboBox>(replay,c=>c.Items.Count==savedCount);
                 var source=FindControl<ComboBox>(replay,c=>c.Items.Contains("离线模拟"));
                 var rank=FindControl<ListView>(replay,t=>true);
                 Check(board.Board.Cells==InitialBoard() && !previous.Enabled && next.Enabled,"replay opens at the first confirmed frame");
+                Check(analyze!=null && analyze.Enabled,"a normally completed recording can be analyzed");
                 step.Value=step.Maximum;
                 Check(board.Board.Status==1 && previous.Enabled && !next.Enabled,"replay ends at the confirmed terminal frame");
                 game.SelectedIndex=game.Items.Count-1;
                 Check(step.Value==0 && board.Board.Cells==InitialBoard(),"changing record resets the replay cursor");
                 Check(Convert.ToString(game.SelectedItem).Contains("未完成"),"the replay list labels an exited round as unfinished");
+                Check(!analyze.Enabled,"analysis is disabled for an unfinished recording");
                 step.Value=step.Maximum;
                 Check(FindControl<Label>(replay,l=>l.Text.EndsWith(" · 未完成"))!=null,
                     "the last frame of an exited round shows unfinished");

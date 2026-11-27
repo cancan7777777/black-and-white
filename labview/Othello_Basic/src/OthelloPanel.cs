@@ -61,7 +61,9 @@ namespace Othello.Basic {
                     e.Graphics.DrawEllipse(piece=='1'?blackRim:whiteRim,x,y,diameter,diameter);
                 }
             }
-            using(Pen selected=new Pen(Color.FromArgb(245,192,74),3)) e.Graphics.DrawRectangle(selected,area.Left+Column*cell+3,area.Top+Row*cell+3,cell-6,cell-6);
+            if(Row>=0 && Row<8 && Column>=0 && Column<8)
+                using(Pen selected=new Pen(Color.FromArgb(245,192,74),3))
+                    e.Graphics.DrawRectangle(selected,area.Left+Column*cell+3,area.Top+Row*cell+3,cell-6,cell-6);
         }
         protected override void OnMouseDown(MouseEventArgs e) {
             base.OnMouseDown(e); RectangleF area=BoardBounds();
@@ -107,6 +109,8 @@ namespace Othello.Basic {
         readonly Label clock=new ClockLabel();
         readonly RowStyle clockRow=new RowStyle(SizeType.Absolute,0);
         readonly Label aiOutlook=new Label(),aiHistory=new Label();
+        readonly CheckBox liveOdds=new CheckBox { Text="实时胜率",Appearance=Appearance.Button,
+            FlatStyle=FlatStyle.Flat,Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleCenter,Margin=new Padding(3,2,3,2) };
         readonly RowStyle scoreRow=new RowStyle(SizeType.Absolute,49);
         readonly RowStyle aiOutlookRow=new RowStyle(SizeType.Absolute,0),aiHistoryRow=new RowStyle(SizeType.Absolute,0);
         readonly Label limitLabel=Label("时长 (s)");
@@ -123,6 +127,9 @@ namespace Othello.Basic {
         int? blackDiscDifference;
         CancellationTokenSource searchCancellation;
         Task<PositionAnalysis> search;
+        Task<WinRates> oddsSearch;
+        BoardState oddsPending,oddsPosition;
+        WinRates odds;
         public bool Stopped { get { return stopped; } }
         public OthelloPanel() : this(new GameArchive(Path.Combine(Environment.GetFolderPath(
             Environment.SpecialFolder.LocalApplicationData),"Othello.Basic","Games"))) { }
@@ -134,7 +141,7 @@ namespace Othello.Basic {
             Build();
             session.Dispatch=delegate(Action action) { if(!IsDisposed && IsHandleCreated) BeginInvoke(action); };
             session.Changed+=Render;
-            timer.Interval=100;timer.Tick+=delegate { session.Tick(); TickEgaroucid(); };
+            timer.Interval=100;timer.Tick+=delegate { session.Tick(); TickEgaroucid(); TickLiveOdds(); };
             Render();
         }
         static Label Label(string text) {
@@ -318,7 +325,7 @@ namespace Othello.Basic {
             return sidebar;
         }
         Control BuildGameControls() {
-            var actions=Grid(8,0);
+            var actions=Grid(9,0);
             actions.BackColor=Color.White;
             actions.Padding=new Padding(8,2,8,2);
             actions.Margin=new Padding(0,0,0,8);
@@ -328,9 +335,13 @@ namespace Othello.Basic {
             Button(endGame,"结束对局",delegate { Command(GameControl.End); });
             Button(restartGame,"重开本局",delegate { Command(GameControl.Restart); });
             Button(toggleEdit,"开启编辑",delegate { Command(GameControl.Edit); });
-            Button(history,"回放与排行",delegate { Safe(delegate { using(var window=new ArchiveWindow(archive)) window.ShowDialog(this); }); });
+            Button(history,"回放与排行",delegate { Safe(delegate { using(var window=new ArchiveWindow(archive,ReadEgaroucidPath)) window.ShowDialog(this); }); });
             Button(aiSettings,"AI 设置",delegate { Safe(SelectEgaroucid); });
-            actions.Controls.AddRange(new Control[]{startGame,pauseGame,resumeGame,endGame,restartGame,toggleEdit,history,aiSettings});
+            liveOdds.FlatAppearance.BorderColor=Color.FromArgb(193,209,202);
+            liveOdds.FlatAppearance.CheckedBackColor=Color.FromArgb(196,226,213);
+            liveOdds.BackColor=Tint;
+            liveOdds.CheckedChanged+=delegate { Render(); TickLiveOdds(); };
+            actions.Controls.AddRange(new Control[]{startGame,pauseGame,resumeGame,endGame,restartGame,toggleEdit,history,aiSettings,liveOdds});
             return actions;
         }
         void UpdateModeInput() {
@@ -528,6 +539,34 @@ namespace Othello.Basic {
         static string Rate(int count,int total) {
             return ((decimal)count/total).ToString("0.#%",CultureInfo.InvariantCulture);
         }
+        void TickLiveOdds() {
+            if(oddsSearch!=null && oddsSearch.IsCompleted) {
+                oddsPosition=oddsPending;
+                var completed=oddsSearch;
+                oddsSearch=null;oddsPending=null;
+                odds=completed.Status==TaskStatus.RanToCompletion?completed.Result:null;
+                if(completed.IsFaulted) completed.Exception.Handle(error=>true);
+                if(liveOdds.Checked && InEgaroucidMode(session.State)) Render();
+            }
+            var state=session.State;
+            if(oddsSearch!=null || !active || !liveOdds.Checked || !session.Synchronized ||
+                !InEgaroucidMode(state) || state.Status!=0 || SamePosition(oddsPosition,state)) return;
+            oddsPending=state;
+            oddsSearch=Task.Run(delegate {
+                // The worker may finish after a mode change or panel close.
+                try { return SimulatedTransport.Estimate(state); }
+                catch(InvalidOperationException) { return null; }
+                catch(EntryPointNotFoundException) { return null; }
+            });
+        }
+        string LiveOddsText(BoardState state) {
+            if(!session.Synchronized) return "模拟胜率 · 等待棋盘同步";
+            if(state.Status==1) return "终局 · "+GameArchive.Outcome(state);
+            if(!SamePosition(oddsPosition,state)) return "模拟胜率 · 计算中…";
+            if(odds==null) return "模拟胜率 · 暂不可用";
+            return "模拟胜率 · "+odds.Total+" 局"+Environment.NewLine+
+                "黑胜 "+odds.Percent(odds.Black)+"   白胜 "+odds.Percent(odds.White)+"   平局 "+odds.Percent(odds.Draw);
+        }
         void RenderAiSummary(BoardState state,bool aiMode) {
             int height=aiMode?77:49;
             if(scoreRow.Height!=height) {
@@ -537,7 +576,7 @@ namespace Othello.Basic {
                 aiOutlook.Visible=aiHistory.Visible=aiMode;
             }
             if(!aiMode) { historyWinRates=null;return; }
-            if(historyWinRates==null) {
+            if(!liveOdds.Checked && historyWinRates==null) {
                 try {
                     var stats=archive.GetAiMatchStats();
                     historyWinRates=stats.Total==0?"历史胜率 · 暂无已完成 AI 对局":
@@ -547,7 +586,7 @@ namespace Othello.Basic {
                 } catch(IOException) { historyWinRates="历史胜率 · 暂无法读取"; }
                 catch(UnauthorizedAccessException) { historyWinRates="历史胜率 · 暂无法读取"; }
             }
-            aiHistory.Text=historyWinRates;
+            aiHistory.Text=liveOdds.Checked?LiveOddsText(state):historyWinRates;
             string outlook;
             if(!session.Synchronized) outlook="局势 · 等待棋盘同步";
             else if(state.Status==1) {
@@ -587,6 +626,7 @@ namespace Othello.Basic {
             move.Enabled=active&&synced&&!session.Waiting&&state.Status==0&&!state.ComputerTurn&&!egaroucidTurn&&
                 (match==null||match.Phase==GamePhase.Running);
             finish.Enabled=active;history.Enabled=active;aiSettings.Enabled=active;
+            liveOdds.Enabled=active&&aiMode;
             bool ready=active&&synced&&!session.Waiting&&match!=null&&!state.Standby;
             startGame.Enabled=ready&&match.Phase==GamePhase.Finished;
             pauseGame.Enabled=ready&&match.Phase==GamePhase.Running;

@@ -12,6 +12,7 @@ namespace Othello.Basic {
         readonly Label frame=new Label { AutoSize=true, Dock=DockStyle.Fill };
         readonly Button previous=new Button { Text="上一步", Dock=DockStyle.Fill, Margin=new Padding(3,0,3,6) };
         readonly Button next=new Button { Text="下一步", Dock=DockStyle.Fill, Margin=new Padding(3,0,3,6) };
+        readonly Button analyze=new Button { Text="分析对局", Dock=DockStyle.Fill, Margin=new Padding(3,0,3,6), Enabled=false };
         readonly List<GameRecord> records;
         readonly GameMode[] rankModes;
         readonly ComboBox mode=new ComboBox { DropDownStyle=ComboBoxStyle.DropDownList, Width=156 };
@@ -20,7 +21,7 @@ namespace Othello.Basic {
         readonly ComboBox source=new ComboBox { DropDownStyle=ComboBoxStyle.DropDownList, Width=110 };
         readonly Label rankSummary=new Label { Dock=DockStyle.Fill, TextAlign=ContentAlignment.MiddleLeft, Padding=new Padding(8,0,0,0) };
 
-        public ArchiveWindow(GameArchive archive) {
+        public ArchiveWindow(GameArchive archive,Func<string> enginePath=null) {
             Text="棋局回放与排行榜"; StartPosition=FormStartPosition.CenterParent;
             ClientSize=new Size(770,610); MinimumSize=new Size(600,510);
             Font=new Font("Microsoft YaHei UI",10);
@@ -36,14 +37,16 @@ namespace Othello.Basic {
             var layout=new TableLayoutPanel { Dock=DockStyle.Fill, ColumnCount=1, RowCount=4, Padding=new Padding(9) };
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute,50)); layout.RowStyles.Add(new RowStyle(SizeType.Percent,100));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute,36)); layout.RowStyles.Add(new RowStyle(SizeType.Absolute,24));
-            var toolbar=new TableLayoutPanel { Dock=DockStyle.Fill, ColumnCount=3, RowCount=1, Margin=Padding.Empty };
+            var toolbar=new TableLayoutPanel { Dock=DockStyle.Fill, ColumnCount=4, RowCount=1, Margin=Padding.Empty };
             toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
             toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,100));
+            toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,108));
             toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,100));
             toolbar.RowStyles.Add(new RowStyle(SizeType.Percent,100));
             games.Margin=new Padding(0,9,9,0);
-            OthelloPanel.StyleButton(previous);OthelloPanel.StyleButton(next);
+            OthelloPanel.StyleButton(previous);OthelloPanel.StyleButton(next);OthelloPanel.StyleButton(analyze);
             toolbar.Controls.Add(games,0,0);toolbar.Controls.Add(previous,1,0);toolbar.Controls.Add(next,2,0);
+            toolbar.Controls.Add(analyze,3,0);
             layout.Controls.Add(toolbar,0,0); layout.Controls.Add(board,0,1); layout.Controls.Add(step,0,2); layout.Controls.Add(frame,0,3);
             replay.Controls.Add(layout);
             foreach(GameRecord game in records) games.Items.Add(string.Format("{0:g} · {1} · {2} · {3:0.#} 分 · {4}{5}",
@@ -59,6 +62,9 @@ namespace Othello.Basic {
             step.ValueChanged+=delegate { RenderFrame(); };
             previous.Click+=delegate { if(step.Value>0) step.Value--; };
             next.Click+=delegate { if(games.SelectedIndex>=0 && step.Value<step.Maximum) step.Value++; };
+            analyze.Click+=delegate {
+                using(var review=new GameAnalysisWindow(records[games.SelectedIndex],enginePath)) review.ShowDialog(this);
+            };
             if(games.Items.Count==0) { frame.Text="还没有已保存的棋局"; games.Enabled=step.Enabled=previous.Enabled=next.Enabled=false; }
             else games.SelectedIndex=0;
 
@@ -96,6 +102,7 @@ namespace Othello.Basic {
             board.Board=game.Frames[step.Value].ToBoard(); board.Invalidate();
             previous.Enabled=step.Value>0;
             next.Enabled=step.Value<step.Maximum;
+            analyze.Enabled=GameArchive.IsSettled(game.Result) && game.Frames[game.Frames.Count-1].Status==1;
             frame.Text=string.Format("{0}/{1} · 黑 {2} 白 {3} · {4}",step.Value+1,game.Frames.Count,board.Board.Black,board.Board.White,
                 game.Complete?"开局至终局":"连接期间记录，可能缺少步骤");
             if(step.Value==step.Maximum) frame.Text+=" · "+GameArchive.Outcome(game);

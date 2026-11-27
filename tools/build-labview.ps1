@@ -19,7 +19,7 @@ if($LASTEXITCODE -ne 0){throw 'Native match tests build failed'}
 & "$build/MatchTests.exe"
 if($LASTEXITCODE -ne 0){throw 'Native match tests failed'}
 $csc=Join-Path $env:WINDIR 'Microsoft.NET/Framework/v4.0.30319/csc.exe'
-$hostSources=@('Protocol.cs','Transport.cs','HostSession.cs','OthelloPanel.cs','GameArchive.cs','ArchiveWindow.cs','EgaroucidEngine.cs') | ForEach-Object { (Resolve-Path -LiteralPath (Join-Path $project ('src\'+$_))).Path }
+$hostSources=@('Protocol.cs','Transport.cs','HostSession.cs','OthelloPanel.cs','GameArchive.cs','ArchiveWindow.cs','GameAnalysisWindow.cs','EgaroucidEngine.cs') | ForEach-Object { (Resolve-Path -LiteralPath (Join-Path $project ('src\'+$_))).Path }
 & $csc /nologo /target:library /platform:x86 ("/out:"+(Join-Path $bin 'Othello.Basic.dll')) /r:System.Windows.Forms.dll /r:System.Drawing.dll @hostSources
 if($LASTEXITCODE -ne 0){throw 'LabVIEW embedded control build failed'}
 & $csc /nologo /platform:x86 /r:System.Windows.Forms.dll ("/out:"+(Join-Path $bin 'BasicTests.exe')) ("/r:"+(Join-Path $bin 'Othello.Basic.dll')) (Join-Path $project 'tests\BasicTests.cs')

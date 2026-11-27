@@ -3,3 +3,5 @@ EXPORTS
     sim_create
     sim_destroy
     sim_exchange
+    sim_win_rates
+    sim_recorded_move
